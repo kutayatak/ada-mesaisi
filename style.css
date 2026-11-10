@@ -234,3 +234,15 @@ input,textarea,input[readonly]{background:#131812;border-color:#444d3b}
   .admin-stats .bars{grid-template-columns:repeat(var(--count),minmax(43px,1fr));gap:5px}
   .admin-stats .bar-value,.admin-stats .bar-date{font-size:9px}
 }
+
+.driver-head{padding:22px 0 6px}
+.driver-head h1{font-size:clamp(40px,7vw,70px);margin-bottom:7px}
+.driver-head p,.access-note{color:var(--muted);font-size:13px}
+.access-note{margin:0 0 12px}
+.driver-dashboard .admin-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+.hero h1{font-size:clamp(53px,7.3vw,100px)}
+@media(max-width:720px){
+  .hero{min-height:327px}
+  .hero h1{font-size:clamp(43px,11vw,67px)}
+  .driver-dashboard .admin-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
