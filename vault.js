@@ -24,6 +24,17 @@ async function seal(key,salt,reports) {
   return JSON.stringify({salt:encode(salt),iv:encode(iv),payload:encode(new Uint8Array(payload))});
 }
 
+async function persist(current,reports) {
+  const sealed=await seal(current.key,current.salt,reports);
+  if (session!==current) throw error(401,'Panel kilitlendi.');
+  if (localStorage.getItem(storageKey)!==current.sealed) {
+    session=null;
+    throw error(401,'Kayıtlar başka bir sekmede değişti. Yeniden giriş yap.');
+  }
+  localStorage.setItem(storageKey,sealed);
+  session={...current,reports,sealed};
+}
+
 export async function vaultApi(path,body) {
   if (path==='admin/login') {
     if (!globalThis.crypto?.subtle) throw error(400,'Paneli HTTPS üzerinden aç.');
@@ -66,6 +77,23 @@ export async function vaultApi(path,body) {
   if (path==='admin/logout') {session=null;return;}
   if (path==='admin/parse') return parseReport(body.message);
   if (path==='admin/reports' && !body) return {reports:session.reports,examples:[],pages:false};
+  if (path==='admin/import') {
+    if (body?.format!=='ada-private-v1' || !Array.isArray(body.reports) || body.reports.length>10000) {
+      throw error(400,'Bu dosya Ada Mesaisi kasa arşivi değil.');
+    }
+    const current=session;
+    const all=new Map(current.reports.map(r=>[r.date,r]));
+    let added=0,skipped=0;
+    for (const row of body.reports) {
+      const report=validateReport(row);
+      if (all.has(report.date)) {skipped++;continue;}
+      all.set(report.date,{...report,archive:true});
+      added++;
+    }
+    const reports=[...all.values()].sort((a,b)=>b.date.localeCompare(a.date));
+    if(added) await persist(current,reports);
+    return {reports,added,skipped};
+  }
   if (path==='admin/reports') {
     const report=validateReport(body);
     const current=session;
@@ -74,14 +102,7 @@ export async function vaultApi(path,body) {
     }
     const reports=[...current.reports.filter(row=>row.date!==report.date),report]
       .sort((a,b)=>b.date.localeCompare(a.date));
-    const sealed=await seal(current.key,current.salt,reports);
-    if (session!==current) throw error(401,'Panel kilitlendi.');
-    if (localStorage.getItem(storageKey)!==current.sealed) {
-      session=null;
-      throw error(401,'Kayıtlar başka bir sekmede değişti. Yeniden giriş yap.');
-    }
-    localStorage.setItem(storageKey,sealed);
-    session={...current,reports,sealed};
+    await persist(current,reports);
     return {report};
   }
   throw error(404,'İşlem bulunamadı.');

@@ -28,6 +28,18 @@ const cyprus=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Famagusta'}).fo
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const total=(rs,k)=>rs.reduce((a,r)=>a+r[k],0);
 const share=c=>Math.round(c*0.4);
+const mealAllowance=50_000;
+const wagesFor=rows=>rows.reduce((sum,row)=>sum+share(row.cash),0);
+function dashboardRows(published,local) {
+  const byDate=new Map(published.map(({date,km,cash})=>[date,{date,km,cash:cash-mealAllowance,fuel:null}]));
+  for(const row of local) {
+    const current=byDate.get(row.date);
+    byDate.set(row.date,row.archive && current?{...current,fuel:row.fuel}:row);
+  }
+  return [...byDate.values()].sort((a,b)=>b.date.localeCompare(a.date));
+}
+const bestBy=(rows,key)=>rows.reduce((best,row)=>!best||row[key]>best[key]?row:best,null);
+
 const period=(mode,anchor)=>{
   const d=date(anchor);
   if(mode==='week') {
@@ -69,7 +81,7 @@ function chart(rs,key,formatter) {
 }
 function table(rs,privateView=false) {
   if(!rs.length) return '<div class="empty">Gösterilecek kayıt yok.</div>';
-  return `<div class="table-scroll"><table><thead><tr><th scope="col">Vardiya</th><th scope="col">Yol</th>${privateView?'<th scope="col">Yakıt</th>':''}<th scope="col">Kasa</th>${privateView?'<th scope="col">Payım</th><th scope="col"><span class="sr-only">İşlem</span></th>':''}</tr></thead><tbody>${rs.map(r=>`<tr><th scope="row">${short(r.date)} <small>${r.date.slice(0,4)}</small></th><td>${km(r.km)}</td>${privateView?`<td>${money(r.fuel)}</td>`:''}<td class="cash">${money(r.cash)}</td>${privateView?`<td class="cash">${money(share(r.cash))}</td><td><button class="text-btn edit" data-date="${r.date}">Düzenle</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;
+  return `<div class="table-scroll"><table><thead><tr><th scope="col">Vardiya</th><th scope="col">Yol</th>${privateView?'<th scope="col">Yakıt</th>':''}<th scope="col">Kasa</th>${privateView?'<th scope="col">Payım</th><th scope="col"><span class="sr-only">İşlem</span></th>':''}</tr></thead><tbody>${rs.map(r=>`<tr><th scope="row">${short(r.date)} <small>${r.date.slice(0,4)}</small></th><td>${km(r.km)}</td>${privateView?`<td>${r.fuel===null?'—':money(r.fuel)}</td>`:''}<td class="cash">${money(r.cash)}</td>${privateView?`<td class="cash">${money(share(r.cash))}</td><td><button class="text-btn edit" data-date="${r.date}">Düzenle</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;
 }
 async function publicPage(){
   document.title='Ada Mesaisi — Kıbrıs Taksi Günlüğü';
@@ -102,7 +114,7 @@ async function publicPage(){
     if(taps!==5) return;
     taps=0;
     try {
-      if (pagesMode) vault=await import('./vault.js?v=2');
+      if (pagesMode) vault=await import('./vault.js?v=3');
       login();
       get('#password').focus();
     } catch {toast('Sürücü paneli açılamadı. Sayfayı yenileyip tekrar dene.');}
@@ -145,6 +157,7 @@ async function publicPage(){
     const periods=Object.fromEntries(Object.keys(labelFor).map(mode=>[mode,inside(reports,period(mode,anchor))]));
     get('#public-data').innerHTML=`${demo?'<div class="demo-note"><span>ÖRNEK</span> İki vardiyalık deneme turu</div>':''}
     <div class="metrics">${Object.entries(labelFor).map(([mode,label],i)=>metric(label,money(total(periods[mode],'cash')),km(total(periods[mode],'km'))+(i?' · '+periods[mode].length+' vardiya':''),['wallet','calendar','chart'][i],!i)).join('')}</div>
+    <div class="public-highlights"><span><b>${reports.length}</b> vardiya</span><span><b>${km(total(reports,'km'))}</b> toplam yol</span><span><b>${money(bestBy(reports,'cash').cash)}</b> en yüksek kasa</span></div>
     <div class="panel overview"><div class="panel-head"><div><span class="eyebrow">TAKSİMETRE GRAFİĞİ</span><h3>Gün gün kasa</h3><p class="sub" id="public-period"></p></div>
     <div class="segmented" aria-label="Grafik dönemi"><button data-mode="week" aria-pressed="true">Hafta</button><button data-mode="month" aria-pressed="false">Ay</button></div></div>
     <div id="public-chart"></div></div>
@@ -174,13 +187,28 @@ async function adminPage() {
   let data;
   try {data=await api('admin/reports');}
   catch(e){login(e.status===401?'':e.message);return;}
-  let records=data.reports, mode='week', anchor=records[0]?.date||cyprus(), editDate='';
+  let published=[], feedUnavailable=false;
+  if(pagesMode) {
+    try {({reports:published}=await api('public'));}
+    catch {feedUnavailable=true;}
+  }
+  let local=data.reports;
+  let records=dashboardRows(published,local), mode='month', anchor=records[0]?.date||cyprus(), editDate='';
+  let plot='wage';
   app.innerHTML=header(`<div class="nav-actions"><a class="button outline" href="./">Vitrin ${ico('external',15)}</a><button class="button outline" id="logout">Çıkış</button></div>`)+`
   <main class="shell admin">
-    <div class="admin-banner"><div><span class="eyebrow">${ico('lock',14)} SADECE SENİN İÇİN</span><h1>Sürücü paneli<span>.</span></h1><p>Bugün ne yaptın, cebine ne kaldı?</p></div><span class="banner-icon">${ico('road',84)}</span></div>
+    <div class="admin-banner"><div><span class="eyebrow">${ico('lock',14)} SADECE SENİN İÇİN</span><h1>Sürücü paneli<span>.</span></h1><p>Kendi kazancın, vardiya performansın ve yol defterin.</p></div><span class="banner-icon">${ico('road',84)}</span></div>
+    <div id="admin-lifetime" class="lifetime" aria-label="Tüm vardiyaların özeti"></div>
+    ${feedUnavailable?'<p class="error">Yayımdaki vardiyalar yüklenemedi. Sayfayı yenileyerek tekrar dene.</p>':''}
     <div class="admin-grid">
-      <section class="panel entry" id="rapor"><span class="eyebrow">01 / YENİ MESAİ</span><h2>Kasa ekle</h2>
-      <p class="sub">${pagesMode?'Buradaki kayıtlar bu tarayıcıya özel. Vitrini güncellemek için kasa mesajını Codex sohbetine gönder.':'Mesajını yapıştır, okunan rakamları kontrol et ve kaydet.'}</p>
+      <section class="panel admin-stats"><div class="panel-head"><div><span class="eyebrow">01 / HESAP KİTAP</span><h2>Mesai özeti</h2></div></div>
+      <div class="admin-controls"><div class="segmented" aria-label="Kazanç dönemi"><button data-mode="week" aria-pressed="true">Hafta</button><button data-mode="month" aria-pressed="false">Ay</button></div>
+      <div class="stepper"><button class="icon-btn" id="prev" aria-label="Önceki dönem">${ico('left',16)}</button><span id="admin-period"></span><button class="icon-btn" id="next" aria-label="Sonraki dönem">${ico('right',16)}</button></div></div>
+      <div id="admin-data"></div>
+      <div class="trend-head"><h3>Vardiya grafiği</h3><div class="segmented" aria-label="Grafik göstergesi"><button data-plot="wage" aria-pressed="true">Payım</button><button data-plot="km" aria-pressed="false">Yol</button></div></div>
+      <div id="admin-chart"></div></section>
+      <section class="panel entry" id="rapor"><span class="eyebrow">02 / YENİ MESAİ</span><h2>Kasa ekle</h2>
+      <p class="sub">${pagesMode?'Vitrine gönderdiğin vardiyalar burada otomatik görünür. Bu formdaki değişiklikler bu tarayıcıda kalır.':'Mesajını yapıştır, okunan rakamları kontrol et ve kaydet.'}</p>
       <form id="parse"><label for="message">Kasa mesajı</label><textarea id="message" rows="6" maxlength="6000" placeholder="GG.AA.YY&#10;… km&#10;yakıt … TL&#10;kalan … TL" required></textarea><button class="button yellow" type="submit">${ico('spark',16)} Mesajı oku</button><button type="button" id="manual" class="text-btn">Elle gir</button></form>
       <div id="review" hidden><hr><h3 id="review-title">Rakamları kontrol et</h3><p id="issues" role="status"></p>
       <form id="save"><div class="fields">
@@ -190,30 +218,57 @@ async function adminPage() {
         <label>Kalan kasa (TL)<input id="cash" type="number" min="0" max="1000000" step=".01" inputmode="decimal" required></label>
       </div><div id="calc" class="calc"></div><button type="submit" class="button dark" id="save-btn">Onayla ve kaydet</button><button type="button" class="text-btn" id="cancel-review">Vazgeç</button></form></div>
       <p id="entry-error" class="error" role="alert"></p>
+      ${pagesMode?`<details class="import-box"><summary>Yakıt arşivini içe aktar</summary>
+        <p class="sub">Özel kasa dosyanı seç. Yakıt bilgileri bu tarayıcıda saklanır.</p>
+        <label for="private-import">Kasa arşivi (JSON)</label><input id="private-import" type="file" accept=".json,application/json">
+        <p id="import-status" class="sub" role="status"></p></details>`:''}
       ${data.pages?`<button id="publish" type="button" class="text-btn">Vitrini eşitle</button><p id="publish-status" class="sub" role="status"></p>`:''}</section>
-      <section class="panel admin-stats"><div class="panel-head"><div><span class="eyebrow">02 / HESAP KİTAP</span><h2>Mesai özeti</h2></div></div>
-      <div class="admin-controls"><div class="segmented" aria-label="Kazanç dönemi"><button data-mode="week" aria-pressed="true">Hafta</button><button data-mode="month" aria-pressed="false">Ay</button></div>
-      <div class="stepper"><button class="icon-btn" id="prev" aria-label="Önceki dönem">${ico('left',16)}</button><span id="admin-period"></span><button class="icon-btn" id="next" aria-label="Sonraki dönem">${ico('right',16)}</button></div></div>
-      <div id="admin-data"></div></section>
     </div>
     <section class="panel history"><div class="panel-head"><div><span class="eyebrow">03 / ARŞİV</span><h3>Vardiya kayıtları</h3></div>${ico('road',23)}</div><div id="private-table"></div></section>
     ${data.examples.length?'<details class="panel examples"><summary>Örnek vardiyalarla hesapları incele</summary><p class="sub">Bu kayıtlar sadece örnek; kayıt defterine ve kazanç ortalamana dahil değil.</p>'+table(data.examples)+'</details>':''}
   </main>`+footer();
   function draw() {
     const p=period(mode,anchor), rs=inside(records,p), n=rs.length;
-    const wages=rs.reduce((a,r)=>a+share(r.cash),0);
+    const wages=wagesFor(rs);
     const avg=(value,formatter)=>n?formatter(value/n):'—';
+    const peak=bestBy(rs,'cash');
+    const fuelRows=rs.filter(r=>r.fuel!==null);
+    const fuel=total(fuelRows,'fuel');
+    const fuelDistance=total(fuelRows,'km');
+    const prevAnchor=date(p.start);
+    prevAnchor.setUTCDate(prevAnchor.getUTCDate()-1);
+    const previous=inside(records,period(mode,iso(prevAnchor)));
+    const previousAverage=previous.length?wagesFor(previous)/previous.length:0;
+    const averageChange=n&&previousAverage?100*(wages/n/previousAverage-1):null;
+    const change=averageChange===null?'':`${averageChange>=0?'+':''}${num(averageChange)}% · önceki dönemin günlük ortalamasına göre`;
     get('#admin-period').textContent=periodName(mode,p);
-    get('#next').disabled=p.end>=cyprus();
+    get('#prev').disabled=!records.length || records.at(-1).date>=p.start;
+    get('#next').disabled=!records.length || records[0].date<=p.end;
     document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
+    const overallBest=bestBy(records,'cash');
+    get('#admin-lifetime').innerHTML=`
+      <div><small>TÜM VARDİYALAR</small><strong>${records.length}</strong><span>${records.length?short(records.at(-1).date)+' – '+short(records[0].date):'Kayıt bekleniyor'}</span></div>
+      <div><small>TOPLAM PAYIM</small><strong>${money(wagesFor(records))}</strong><span>Vardiya kasasının %40’ı</span></div>
+      <div><small>TOPLAM YOL</small><strong>${km(total(records,'km'))}</strong><span>${records.length?km(total(records,'km')/records.length)+' / vardiya':'—'}</span></div>
+      <div><small>EN İYİ VARDİYAM</small><strong>${overallBest?money(share(overallBest.cash)):'—'}</strong><span>${overallBest?long(overallBest.date):'—'}</span></div>`;
     get('#admin-data').innerHTML=`<div class="metrics admin-metrics">
       ${metric('Benim kazancım',money(wages),n+' vardiya · %40 pay','wallet',true)}
-      ${metric('Toplam kasa',money(total(rs,'cash')),'Vardiyaların toplamı','chart')}
-      ${metric('Toplam yol',km(total(rs,'km')),'Günlük ort. '+avg(total(rs,'km'),km),'road')}
-      ${metric('Yakıt gideri',money(total(rs,'fuel')),'Günlük ort. '+avg(total(rs,'fuel'),money),'fuel')}
-    </div><p class="footnote">${ico('spark',14)} Günlük ortalama kazancım: <b>${avg(wages,money)}</b></p>${chart(rs.map(r=>({...r,wage:share(r.cash)})),'wage',money)}`;
+      ${metric('Günlük ortalama',avg(wages,money),change||'Kayıtlı vardiya başına','chart')}
+      ${metric('Toplam kasa',money(total(rs,'cash')),peak?'En iyi gün '+short(peak.date)+' · '+money(peak.cash):'—','spark')}
+      ${metric('Toplam yol',km(total(rs,'km')),'Ort. '+avg(total(rs,'km'),km)+' / vardiya','road')}
+    </div>
+    <div class="fuel-strip">${ico('fuel')} <div><b>Yakıt ${fuelRows.length?money(fuel):'—'}</b><small>${fuelRows.length
+      ?`${fuelRows.length}/${n} vardiya · ${fuelDistance?money(fuel/fuelDistance)+' / km':'km bilgisi yok'}`
+      :'Yakıt rakamları için özel arşivi içe aktar.'}</small></div></div>`;
+    drawChart(rs);
     get('#private-table').innerHTML=table(records,true);
-    document.querySelectorAll('.edit').forEach(b=>b.onclick=()=>{const r=records.find(r=>r.date===b.dataset.date);openReview({...r,fuel:r.fuel/100,cash:r.cash/100},[],r.date);get('#rapor').scrollIntoView({behavior:'smooth'});});
+    document.querySelectorAll('.edit').forEach(b=>b.onclick=()=>{const r=records.find(r=>r.date===b.dataset.date);openReview({...r,fuel:r.fuel===null?'':r.fuel/100,cash:r.cash/100},[],r.date);get('#rapor').scrollIntoView({behavior:'smooth'});});
+  }
+  function drawChart(rows=inside(records,period(mode,anchor))) {
+    document.querySelectorAll('[data-plot]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.plot===plot)));
+    get('#admin-chart').innerHTML=plot==='km'
+      ?chart(rows,'km',km)
+      :chart(rows.map(r=>({...r,wage:share(r.cash)})),'wage',money);
   }
   function openReview(fields={},issues=[],editing='') {
     editDate=editing;
@@ -252,7 +307,8 @@ async function adminPage() {
         if(!confirm(long(fields.date)+' tarihli kaydın üzerine yazılsın mı?')) return;
         result=await save(true);
       }
-      records=[...records.filter(r=>r.date!==result.report.date),result.report].sort((a,b)=>b.date.localeCompare(a.date));
+      local=[...local.filter(r=>r.date!==result.report.date),result.report];
+      records=dashboardRows(published,local);
       anchor=result.report.date;
       get('#review').hidden=true;get('#message').value='';draw();
       toast('Vardiya kaydedildi.');
@@ -272,6 +328,24 @@ async function adminPage() {
     catch(err){if(err.status===401)return login(err.message);showPublish('failed');}
     finally {button.disabled=false;}
   };
+  if(pagesMode) get('#private-import').onchange=async e=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    const status=get('#import-status');
+    e.target.disabled=true;
+    try {
+      if(file.size>2_000_000) throw new Error('Arşiv dosyası çok büyük.');
+      const payload=JSON.parse(await file.text());
+      const result=await api('admin/import',payload);
+      local=result.reports;
+      records=dashboardRows(published,local);
+      if(records.length) anchor=records[0].date;
+      draw();
+      status.textContent=`${result.added} vardiya eklendi. ${result.skipped} mevcut kayıt korundu.`;
+    } catch(err) {status.textContent=err.message;}
+    finally {e.target.disabled=false;e.target.value='';}
+  };
+  document.querySelectorAll('[data-plot]').forEach(b=>b.onclick=()=>{plot=b.dataset.plot;drawChart();});
   get('#logout').onclick=async()=>{try{await api('admin/logout',{});login();}catch(err){if(err.status===401) login();else toast(err.message);}};
   document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;draw();});
   const step=dir=>{
