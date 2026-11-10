@@ -1,6 +1,7 @@
 import {parseReport,validateReport} from './report.mjs';
 
 const storageKey='ada-mesaisi-vault-v1';
+const panelPin='1234';
 const encoder=new TextEncoder();
 const encode=bytes=>btoa(Array.from(bytes,byte=>String.fromCharCode(byte)).join(''));
 const decode=text=>Uint8Array.from(atob(text),char=>char.charCodeAt(0));
@@ -28,7 +29,7 @@ export async function vaultApi(path,body) {
     if (!globalThis.crypto?.subtle) throw error(400,'Paneli HTTPS üzerinden aç.');
     const stored=localStorage.getItem(storageKey);
     if (!stored) {
-      if (body.password.length<8) throw error(400,'En az 8 karakterli bir şifre seç.');
+      if (body.password!==panelPin) throw error(401,'Şifre doğru değil.');
       const salt=crypto.getRandomValues(new Uint8Array(16));
       const key=await deriveKey(body.password,salt);
       const sealed=await seal(key,salt,[]);
@@ -37,15 +38,27 @@ export async function vaultApi(path,body) {
       session={key,salt,reports:[],sealed};
       return;
     }
+    let opened;
     try {
       const {salt,iv,payload}=JSON.parse(stored);
       const saltBytes=decode(salt);
       const key=await deriveKey(body.password,saltBytes);
       const clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(iv)},key,decode(payload));
-      session={key,salt:saltBytes,reports:JSON.parse(new TextDecoder().decode(clear)),sealed:stored};
+      opened={key,salt:saltBytes,reports:JSON.parse(new TextDecoder().decode(clear)),sealed:stored};
     } catch {
       throw error(401,'Şifre doğru değil veya bu tarayıcıdaki kayıt okunamadı.');
     }
+    if (body.password!==panelPin) {
+      const salt=crypto.getRandomValues(new Uint8Array(16));
+      const key=await deriveKey(panelPin,salt);
+      const sealed=await seal(key,salt,opened.reports);
+      if (localStorage.getItem(storageKey)!==stored) {
+        throw error(409,'Kayıtlar başka bir sekmede değişti. Yeniden giriş yap.');
+      }
+      localStorage.setItem(storageKey,sealed);
+      opened={key,salt,reports:opened.reports,sealed};
+    }
+    session=opened;
     return;
   }
 

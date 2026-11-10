@@ -102,7 +102,7 @@ async function publicPage(){
     if(taps!==5) return;
     taps=0;
     try {
-      if (pagesMode) vault=await import('./vault.js');
+      if (pagesMode) vault=await import('./vault.js?v=2');
       login();
       get('#password').focus();
     } catch {toast('Sürücü paneli açılamadı. Sayfayı yenileyip tekrar dene.');}
@@ -159,12 +159,11 @@ async function publicPage(){
 }
 function login(message=''){
   document.title='Sürücü Paneli — Ada Mesaisi';
-  const first=pagesMode && !vault.hasVault();
   app.innerHTML=header(`<a class="button outline" href="./">Vitrine dön ${ico('external',16)}</a>`)+`
     <main class="shell login-wrap"><section class="panel login">
-    <div class="metric-icon">${ico('lock',23)}</div><span class="eyebrow">ÖZEL ALAN</span><h1>${first?'Şifreni oluştur':'Sürücü girişi'}</h1>
-    <p>${first?'En az 8 karakter seç. Özel kayıtlar bu tarayıcıda şifreli saklanır.':'Vardiya raporlarını ve kendi kazancını görmek için giriş yap.'}</p>
-    <form id="login"><label for="password">Şifre</label><input id="password" name="password" type="password" autocomplete="${first?'new-password':'current-password'}" minlength="${first?8:1}" maxlength="512"  required><p class="error" id="login-error" role="alert">${escape(message)}</p><button class="button dark" type="submit">${first?'Şifre oluştur ve aç':'Giriş yap'} ${ico('external',16)}</button></form></section></main>`+footer();
+    <div class="metric-icon">${ico('lock',23)}</div><span class="eyebrow">ÖZEL ALAN</span><h1>Sürücü girişi</h1>
+    <p>Vardiya raporlarını ve kendi kazancını görmek için giriş yap.</p>
+    <form id="login"><label for="password">Şifre</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="512"  required><p class="error" id="login-error" role="alert">${escape(message)}</p><button class="button dark" type="submit">Giriş yap ${ico('external',16)}</button></form></section></main>`+footer();
   get('#login').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;get('#login-error').textContent='';
     try {await api('admin/login',{password:get('#password').value});await adminPage();}
     catch(err){get('#login-error').textContent=err.message;} finally{b.disabled=false;}
