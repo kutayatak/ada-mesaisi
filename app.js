@@ -47,16 +47,18 @@ const inside=(rs,p)=>rs.filter(r=>r.date>=p.start && r.date<=p.end);
 const periodName=(mode,p)=>mode==='month'?fmt(p.start,{month:'long',year:'numeric'}):mode==='day'?long(p.start):short(p.start)+' – '+short(p.end);
 const get=(s)=>document.querySelector(s);
 let toastTimer;
+let vault;
 function toast(msg){const el=get('#toast');el.textContent=msg;el.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('visible'),3500);}
 async function api(url,body) {
+  if(pagesMode && url.startsWith('admin/')) return vault.vaultApi(url,body);
   const path=pagesMode && url==='public'?'./vardiyalar.json':'/api/'+url;
   const res=await fetch(path,body===undefined?{cache:'no-cache'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data=await res.json();
   if(!res.ok) throw Object.assign(new Error(data.error),{status:res.status});
   return data;
 }
-const brand=()=>`<a class="brand" href="./" aria-label="Ada Mesaisi ana sayfa"><img src="./icon.svg" alt="" width="41" height="41"><span>Ada Mesaisi<small>KIBRIS’TA DİREKSİYON BAŞINDA</small></span></a>`;
-const footer=()=>`<footer class="shell footer"><div class="checker" aria-hidden="true"></div><span>Bir sonraki turda görüşürüz! <b>✦</b></span>${pagesMode?'':`<a class="quiet" href="/sofor" aria-label="Sürücü girişi" title="Sürücü girişi">${ico('lock',15)}</a>`}</footer>`;
+const brand=()=>`<button class="brand" type="button"><img src="./icon.svg" alt="" width="43" height="43"><span>Ada Mesaisi<small>KIBRIS TAKSİ GÜNLÜĞÜ</small></span></button>`;
+const footer=()=>`<footer class="shell footer"><div class="checker" aria-hidden="true"></div><span>Kıbrıs’ta direksiyon başından. <b>✦</b></span>${pagesMode?'':`<a class="quiet" href="/sofor" aria-label="Sürücü girişi" title="Sürücü girişi">${ico('lock',15)}</a>`}</footer>`;
 const header=(action)=>`<header class="shell nav">${brand()}${action}</header>`;
 const metric=(label,val,caption,icon,feature=false)=>`<article class="metric ${feature?'feature':''}"><div class="metric-top"><span class="metric-icon">${ico(icon)}</span><span>${label}</span></div><strong>${val}</strong><small>${caption}</small></article>`;
 const labelFor={day:'Son mesai',week:'Haftanın kasası',month:'Ayın kasası'};
@@ -70,32 +72,41 @@ function table(rs,privateView=false) {
   return `<div class="table-scroll"><table><thead><tr><th scope="col">Vardiya</th><th scope="col">Yol</th>${privateView?'<th scope="col">Yakıt</th>':''}<th scope="col">Kasa</th>${privateView?'<th scope="col">Payım</th><th scope="col"><span class="sr-only">İşlem</span></th>':''}</tr></thead><tbody>${rs.map(r=>`<tr><th scope="row">${short(r.date)} <small>${r.date.slice(0,4)}</small></th><td>${km(r.km)}</td>${privateView?`<td>${money(r.fuel)}</td>`:''}<td class="cash">${money(r.cash)}</td>${privateView?`<td class="cash">${money(share(r.cash))}</td><td><button class="text-btn edit" data-date="${r.date}">Düzenle</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;
 }
 async function publicPage(){
+  document.title='Ada Mesaisi — Kıbrıs Taksi Günlüğü';
   app.innerHTML=header(`<button id="share" class="button outline">${ico('share',16)} <span>Paylaş</span></button>`)+`
   <main class="shell">
-    <section class="hero" aria-labelledby="hero-title">
+    <section class="hero night-hero" aria-labelledby="hero-title">
+      <img class="night-photo" src="./hero.jpg" alt="Gün batımında Kıbrıs sahil yolunda ilerleyen taksi" fetchpriority="high">
       <div class="hero-copy">
-        <div class="hero-label"><span aria-hidden="true">☀</span> KIBRIS’TAN BİP BİP!</div>
-        <h1 id="hero-title">Atla, <em>gidiyoruz!</em></h1>
-        <p>Adaya taşındım, taksiye bindim. Her mesainin sonunda bakalım taksimetre ne demiş.</p>
+        <div class="hero-label"><span class="dot"></span> KIBRIS · ADA MESAİSİ</div>
+        <h1 id="hero-title">Kontak açık.<br><em>Yol bizim.</em></h1>
+        <p>Kıbrıs’a taşındım, direksiyona geçtim. Mesai bitince taksimetre burada.</p>
         <div class="hero-actions">
-          <a class="button yellow" href="#kasa">Kasa ne yaptı? ${ico('arrow',16)}</a>
-          <button class="horn" id="horn" type="button">Bip bip! <span aria-hidden="true">📣</span></button>
+          <a class="button yellow" href="#kasa">Taksimetreye bak ${ico('arrow',16)}</a>
+          <button class="horn" id="horn" type="button" aria-label="Bip bip efekti">Bip bip <span aria-hidden="true">↗</span></button>
         </div>
       </div>
-      <figure class="postcard">
-        <img src="./hero.jpg" alt="Gün batımında Kıbrıs sahil yolunda ilerleyen sarı taksi" fetchpriority="high">
-        <figcaption><span aria-hidden="true">✦</span> Ada turu · 01 <span aria-hidden="true">↗</span></figcaption>
-        <span class="hero-stamp" aria-hidden="true">☀</span>
-        <span class="postcard-star" aria-hidden="true">✷</span>
-      </figure>
+      <span class="night-index" aria-hidden="true">35° N &nbsp; / &nbsp; 33° E</span>
       <div id="confetti" class="confetti" aria-hidden="true"></div>
     </section>
-    <div class="taxi-tape" aria-hidden="true"><span>ADA MODU AÇIK</span><span>✦</span><span>TAKSİ YOLDA</span><span>✦</span><span>ADA MODU AÇIK</span><span>✦</span><span>TAKSİ YOLDA</span></div>
     <section id="kasa" class="section">
-      <div class="section-head"><div><span class="eyebrow"><span class="dot"></span> TAKSİMETRE</span><h2>Ne yaptık bakalım?</h2></div><div id="report-date" class="date-chip"></div></div>
-      <div id="public-data" aria-live="polite"><div class="empty">Kasa kayıtları yükleniyor…</div></div>
+      <div class="section-head"><div><span class="eyebrow">01 / TAKSİMETRE</span><h2>Mesai defteri</h2></div><div id="report-date" class="date-chip"></div></div>
+      <div id="public-data" aria-live="polite"><div class="empty">Taksimetre açılıyor…</div></div>
     </section>
   </main>`+footer();
+  let taps=0,lastTap=0;
+  get('.brand').onclick=async()=>{
+    const now=Date.now();
+    taps=now-lastTap>1500?1:taps+1;
+    lastTap=now;
+    if(taps!==5) return;
+    taps=0;
+    try {
+      if (pagesMode) vault=await import('./vault.js');
+      login();
+      get('#password').focus();
+    } catch {toast('Sürücü paneli açılamadı. Sayfayı yenileyip tekrar dene.');}
+  };
   const confetti=get('#confetti');
   let confettiTimer;
   function celebrate() {
@@ -123,7 +134,12 @@ async function publicPage(){
   };
   try {
     const {reports,demo}=await api('public');
-    if(!reports.length){get('#public-data').innerHTML='<div class="empty">İlk vardiya raporu gelince kasa ve kilometre burada görünecek.</div>';return;}
+    if(!get('#public-data')) return;
+    if(!reports.length){
+      get('#public-data').innerHTML=`<div class="metrics">${Object.values(labelFor)
+        .map((label,i)=>metric(label,'—','Kayıt bekleniyor',['wallet','calendar','chart'][i],!i)).join('')}</div>`;
+      return;
+    }
     const anchor=reports[0].date;
     get('#report-date').innerHTML=ico('calendar',15)+' Son mesai · '+long(anchor);
     const periods=Object.fromEntries(Object.keys(labelFor).map(mode=>[mode,inside(reports,period(mode,anchor))]));
@@ -139,6 +155,131 @@ async function publicPage(){
       document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
     };
     document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>draw(b.dataset.mode));draw('week');
-  } catch {get('#public-data').innerHTML='<div class="empty">Kasa verileri yüklenemedi. Sayfayı yenileyip tekrar dene.</div>';}
+  } catch {if(get('#public-data')) get('#public-data').innerHTML='<div class="empty">Kasa verileri yüklenemedi. Sayfayı yenileyip tekrar dene.</div>';}
 }
-publicPage();
+function login(message=''){
+  document.title='Sürücü Paneli — Ada Mesaisi';
+  const first=pagesMode && !vault.hasVault();
+  app.innerHTML=header(`<a class="button outline" href="./">Vitrine dön ${ico('external',16)}</a>`)+`
+    <main class="shell login-wrap"><section class="panel login">
+    <div class="metric-icon">${ico('lock',23)}</div><span class="eyebrow">ÖZEL ALAN</span><h1>${first?'Şifreni oluştur':'Sürücü girişi'}</h1>
+    <p>${first?'En az 8 karakter seç. Özel kayıtlar bu tarayıcıda şifreli saklanır.':'Vardiya raporlarını ve kendi kazancını görmek için giriş yap.'}</p>
+    <form id="login"><label for="password">Şifre</label><input id="password" name="password" type="password" autocomplete="${first?'new-password':'current-password'}" minlength="${first?8:1}" maxlength="512"  required><p class="error" id="login-error" role="alert">${escape(message)}</p><button class="button dark" type="submit">${first?'Şifre oluştur ve aç':'Giriş yap'} ${ico('external',16)}</button></form></section></main>`+footer();
+  get('#login').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;get('#login-error').textContent='';
+    try {await api('admin/login',{password:get('#password').value});await adminPage();}
+    catch(err){get('#login-error').textContent=err.message;} finally{b.disabled=false;}
+  };
+}
+async function adminPage() {
+  document.title='Sürücü Paneli — Ada Mesaisi';
+  let data;
+  try {data=await api('admin/reports');}
+  catch(e){login(e.status===401?'':e.message);return;}
+  let records=data.reports, mode='week', anchor=records[0]?.date||cyprus(), editDate='';
+  app.innerHTML=header(`<div class="nav-actions"><a class="button outline" href="./">Vitrin ${ico('external',15)}</a><button class="button outline" id="logout">Çıkış</button></div>`)+`
+  <main class="shell admin">
+    <div class="admin-banner"><div><span class="eyebrow">${ico('lock',14)} SADECE SENİN İÇİN</span><h1>Sürücü paneli<span>.</span></h1><p>Bugün ne yaptın, cebine ne kaldı?</p></div><span class="banner-icon">${ico('road',84)}</span></div>
+    <div class="admin-grid">
+      <section class="panel entry" id="rapor"><span class="eyebrow">01 / YENİ MESAİ</span><h2>Kasa ekle</h2>
+      <p class="sub">${pagesMode?'Buradaki kayıtlar bu tarayıcıya özel. Vitrini güncellemek için kasa mesajını Codex sohbetine gönder.':'Mesajını yapıştır, okunan rakamları kontrol et ve kaydet.'}</p>
+      <form id="parse"><label for="message">Kasa mesajı</label><textarea id="message" rows="6" maxlength="6000" placeholder="GG.AA.YY&#10;… km&#10;yakıt … TL&#10;kalan … TL" required></textarea><button class="button yellow" type="submit">${ico('spark',16)} Mesajı oku</button><button type="button" id="manual" class="text-btn">Elle gir</button></form>
+      <div id="review" hidden><hr><h3 id="review-title">Rakamları kontrol et</h3><p id="issues" role="status"></p>
+      <form id="save"><div class="fields">
+        <label>Tarih<input id="date" type="date" required max="${cyprus()}"></label>
+        <label>Kilometre<input id="km" type="number" min="0" max="10000" step=".01" inputmode="decimal" required></label>
+        <label>Yakıt (TL)<input id="fuel" type="number" min="0" max="1000000" step=".01" inputmode="decimal" required></label>
+        <label>Kalan kasa (TL)<input id="cash" type="number" min="0" max="1000000" step=".01" inputmode="decimal" required></label>
+      </div><div id="calc" class="calc"></div><button type="submit" class="button dark" id="save-btn">Onayla ve kaydet</button><button type="button" class="text-btn" id="cancel-review">Vazgeç</button></form></div>
+      <p id="entry-error" class="error" role="alert"></p>
+      ${data.pages?`<button id="publish" type="button" class="text-btn">Vitrini eşitle</button><p id="publish-status" class="sub" role="status"></p>`:''}</section>
+      <section class="panel admin-stats"><div class="panel-head"><div><span class="eyebrow">02 / HESAP KİTAP</span><h2>Mesai özeti</h2></div></div>
+      <div class="admin-controls"><div class="segmented" aria-label="Kazanç dönemi"><button data-mode="week" aria-pressed="true">Hafta</button><button data-mode="month" aria-pressed="false">Ay</button></div>
+      <div class="stepper"><button class="icon-btn" id="prev" aria-label="Önceki dönem">${ico('left',16)}</button><span id="admin-period"></span><button class="icon-btn" id="next" aria-label="Sonraki dönem">${ico('right',16)}</button></div></div>
+      <div id="admin-data"></div></section>
+    </div>
+    <section class="panel history"><div class="panel-head"><div><span class="eyebrow">03 / ARŞİV</span><h3>Vardiya kayıtları</h3></div>${ico('road',23)}</div><div id="private-table"></div></section>
+    ${data.examples.length?'<details class="panel examples"><summary>Örnek vardiyalarla hesapları incele</summary><p class="sub">Bu kayıtlar sadece örnek; kayıt defterine ve kazanç ortalamana dahil değil.</p>'+table(data.examples)+'</details>':''}
+  </main>`+footer();
+  function draw() {
+    const p=period(mode,anchor), rs=inside(records,p), n=rs.length;
+    const wages=rs.reduce((a,r)=>a+share(r.cash),0);
+    const avg=(value,formatter)=>n?formatter(value/n):'—';
+    get('#admin-period').textContent=periodName(mode,p);
+    get('#next').disabled=p.end>=cyprus();
+    document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
+    get('#admin-data').innerHTML=`<div class="metrics admin-metrics">
+      ${metric('Benim kazancım',money(wages),n+' vardiya · %40 pay','wallet',true)}
+      ${metric('Toplam kasa',money(total(rs,'cash')),'Vardiyaların toplamı','chart')}
+      ${metric('Toplam yol',km(total(rs,'km')),'Günlük ort. '+avg(total(rs,'km'),km),'road')}
+      ${metric('Yakıt gideri',money(total(rs,'fuel')),'Günlük ort. '+avg(total(rs,'fuel'),money),'fuel')}
+    </div><p class="footnote">${ico('spark',14)} Günlük ortalama kazancım: <b>${avg(wages,money)}</b></p>${chart(rs.map(r=>({...r,wage:share(r.cash)})),'wage',money)}`;
+    get('#private-table').innerHTML=table(records,true);
+    document.querySelectorAll('.edit').forEach(b=>b.onclick=()=>{const r=records.find(r=>r.date===b.dataset.date);openReview({...r,fuel:r.fuel/100,cash:r.cash/100},[],r.date);get('#rapor').scrollIntoView({behavior:'smooth'});});
+  }
+  function openReview(fields={},issues=[],editing='') {
+    editDate=editing;
+    get('#review').hidden=false;
+    get('#review-title').textContent=editDate?'Vardiyayı düzenle':'Rakamları kontrol et';
+    get('#save-btn').textContent=editDate?'Değişiklikleri kaydet':'Onayla ve kaydet';
+    get('#issues').textContent=issues.join(' ');
+    get('#entry-error').textContent='';
+    for(const k of ['date','km','fuel','cash']) get('#'+k).value=fields[k]??'';
+    get('#date').readOnly=Boolean(editDate);
+    updateCalc();
+    get('#review-title').setAttribute('tabindex','-1');get('#review-title').focus();
+  }
+  function updateCalc(){
+    const v=get('#cash').value;
+    get('#calc').innerHTML=v&&Number(v)>=0?`<span>Benim payım <b>${money(share(Math.round(Number(v)*100)))}</b></span><span>Vitrindeki kasa <b>${money(Math.round(Number(v)*100)+50000)}</b></span>`:'';
+  }
+  get('#cash').oninput=updateCalc;
+  get('#manual').onclick=()=>openReview({date:cyprus()});
+  get('#cancel-review').onclick=()=>{get('#review').hidden=true;get('#entry-error').textContent='';get('#message').focus();};
+  get('#parse').onsubmit=async e=>{
+    e.preventDefault();e.submitter.disabled=true;get('#entry-error').textContent='';
+    try {const {fields,issues}=await api('admin/parse',{message:get('#message').value});openReview(fields,issues);}
+    catch(err){if(err.status===401)return login(err.message);get('#entry-error').textContent=err.message;}
+    finally{e.submitter.disabled=false;}
+  };
+  get('#save').onsubmit=async e=>{
+    e.preventDefault();const btn=e.submitter;btn.disabled=true;get('#entry-error').textContent='';
+    const fields=Object.fromEntries(['date','km','fuel','cash'].map(k=>[k,get('#'+k).value]));
+    const save=(replace)=>api('admin/reports',{...fields,replace});
+    try {
+      let result;
+      try {result=await save(Boolean(editDate));}
+      catch(err){
+        if(err.status!==409) throw err;
+        if(!confirm(long(fields.date)+' tarihli kaydın üzerine yazılsın mı?')) return;
+        result=await save(true);
+      }
+      records=[...records.filter(r=>r.date!==result.report.date),result.report].sort((a,b)=>b.date.localeCompare(a.date));
+      anchor=result.report.date;
+      get('#review').hidden=true;get('#message').value='';draw();
+      toast('Vardiya kaydedildi.');
+      if(result.pages) showPublish(result.pages);
+    }catch(err){if(err.status===401)return login(err.message);get('#entry-error').textContent=err.message;}finally{btn.disabled=false;}
+  };
+  function showPublish(result) {
+    get('#publish-status').textContent=result==='sent'
+      ?'GitHub güncellemeyi aldı. Vitrine yansıması birkaç dakika sürebilir.'
+      :'Kayıt Mac’te duruyor. GitHub’a göndermek için Vitrini eşitle’ye bas.';
+  }
+  if(data.pages) get('#publish').onclick=async e=>{
+    const button=e.currentTarget;
+    button.disabled=true;
+    get('#publish-status').textContent='GitHub’a gönderiliyor…';
+    try {showPublish((await api('admin/publish',{})).pages);}
+    catch(err){if(err.status===401)return login(err.message);showPublish('failed');}
+    finally {button.disabled=false;}
+  };
+  get('#logout').onclick=async()=>{try{await api('admin/logout',{});login();}catch(err){if(err.status===401) login();else toast(err.message);}};
+  document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;draw();});
+  const step=dir=>{
+    const d=date(period(mode,anchor).start);
+    if(mode==='week')d.setUTCDate(d.getUTCDate()+dir*7);else d.setUTCMonth(d.getUTCMonth()+dir);
+    anchor=iso(d);draw();
+  };
+  get('#prev').onclick=()=>step(-1);get('#next').onclick=()=>step(1);draw();
+}
+if(!pagesMode && location.pathname==='/sofor') adminPage();else publicPage();
