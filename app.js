@@ -1,428 +1,103 @@
-const app=document.querySelector('#app');
-const pagesMode=Boolean(document.querySelector('meta[name=ada-mode]'));
-const svg={
- share:'<path d="M12 15V3m-4 4 4-4 4 4M5 12v8h14v-8"/>',
- arrow:'<path d="M12 5v14m-5-5 5 5 5-5"/>',
- external:'<path d="M7 17 17 7M7 7h10v10"/>',
- pin:'<path d="M19 10c0 5-7 10-7 10s-7-5-7-10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2"/>',
- calendar:'<rect x="4" y="6" width="16" height="15" rx="2"/><path d="M8 3v6m8-6v6M4 11h16"/>',
- road:'<path d="M5 21 8 3m11 18L16 3M12 5v3m0 3v3m0 3v3"/>',
- spark:'<path d="M12 2c0 6-4 10-10 10 6 0 10 4 10 10 0-6 4-10 10-10-6 0-10-4-10-10Z"/>',
- wallet:'<path d="M19 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h13V8H6a2 2 0 0 1 0-4m13 8h2v4h-6v-4h4Z"/>',
- lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/>',
- chart:'<path d="M4 4v16h16M8 16v-4m4 4V8m4 8v-6"/>',
- fuel:'<path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M4 10h10m0 4h2a2 2 0 0 1 2 2v2a2 2 0 0 0 4 0v-6l-4-4"/>',
- left:'<path d="m15 18-6-6 6-6"/>',right:'<path d="m9 18 6-6-6-6"/>'
-};
-const ico=(name,size=18)=>`<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svg[name]}</svg>`;
-const nf=new Intl.NumberFormat('tr-TR',{maximumFractionDigits:2});
-const num=n=>nf.format(n);
-const money=c=>num(c/100)+' ₺';
-const km=n=>num(n)+' km';
-const date=d=>new Date(d+'T12:00:00Z');
-const fmt=(d,opt)=>new Intl.DateTimeFormat('tr-TR',{timeZone:'UTC',...opt}).format(date(d));
-const long=d=>fmt(d,{day:'numeric',month:'long',year:'numeric'});
-const short=d=>fmt(d,{day:'numeric',month:'short'});
-const iso=d=>d.toISOString().slice(0,10);
-const cyprus=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Famagusta'}).format();
-const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const total=(rs,k)=>rs.reduce((a,r)=>a+r[k],0);
-const share=c=>Math.round(c*0.4);
-const mealAllowance=50_000;
-const wageOf=row=>row.wage??share(row.cash);
-const wagesFor=rows=>rows.reduce((sum,row)=>sum+wageOf(row),0);
-const publicEarnings=row=>row.earnings??(share(row.cash-mealAllowance)+mealAllowance);
-const bestBy=(rows,key)=>rows.reduce((best,row)=>!best||row[key]>best[key]?row:best,null);
-
-const period=(mode,anchor)=>{
-  const d=date(anchor);
-  if(mode==='week') {
-    d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);
-    const start=iso(d);
-    d.setUTCDate(d.getUTCDate()+6);
-    return {start,end:iso(d)};
-  }
-  if(mode==='month') {
-    d.setUTCDate(1);const start=iso(d);
-    d.setUTCMonth(d.getUTCMonth()+1);d.setUTCDate(0);
-    return {start,end:iso(d)};
-  }
-  return {start:anchor,end:anchor};
-};
-const inside=(rs,p)=>rs.filter(r=>r.date>=p.start && r.date<=p.end);
-const periodName=(mode,p)=>mode==='month'?fmt(p.start,{month:'long',year:'numeric'}):mode==='day'?long(p.start):short(p.start)+' – '+short(p.end);
-const get=(s)=>document.querySelector(s);
-let toastTimer;
-let vault;
-const offlineReports=document.querySelector('#private-reports');
-function toast(msg){const el=get('#toast');el.textContent=msg;el.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('visible'),3500);}
-async function api(url,body) {
-  if(pagesMode && url.startsWith('admin/')) return vault.vaultApi(url,body);
-  const path=pagesMode && url==='public'?'./vardiyalar.json':'/api/'+url;
-  const res=await fetch(path,body===undefined?{cache:'no-cache'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const data=await res.json();
-  if(!res.ok) throw Object.assign(new Error(data.error),{status:res.status});
-  return data;
+import {dayDate,iso,addDays,weekStart,sum,average,change,normalize,months,weeks,monthStats,weekdayStats,sameWeekProgress} from './stats.mjs';
+const app=document.querySelector('#app'),$=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const offline=document.querySelector('#private-reports'),pages=!!document.querySelector('meta[name=ada-mode]');
+const nf=new Intl.NumberFormat('tr-TR',{maximumFractionDigits:0}),decimal=new Intl.NumberFormat('tr-TR',{maximumFractionDigits:2});
+const number=n=>nf.format(n),money=n=>n==null?'—':number(n/100)+' ₺',rate=n=>n==null?'—':decimal.format(n/100)+' ₺';
+const format=(s,options)=>new Intl.DateTimeFormat('tr-TR',{timeZone:'UTC',...options}).format(dayDate(s));
+const short=s=>format(s,{day:'numeric',month:'short'}),long=s=>format(s,{day:'numeric',month:'long',year:'numeric'}),monthName=s=>format(s+'-01',{month:'long',year:'numeric'});
+const weekdays=['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const arrow='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 19 19 5M5 5h14v14"/></svg>';
+const taxi=`<svg class="taxi" viewBox="0 0 140 75" aria-hidden="true"><path fill="#f6bd38" stroke="#252b25" stroke-width="3" d="m27 38 14-23h47l22 23 16 4 5 18H9V45Z"/><path fill="#b3d5cf" stroke="#252b25" stroke-width="3" d="m40 34 9-13h16v13Zm31-13h14l13 13H71Z"/><rect x="56" y="7" width="25" height="9" rx="2" fill="#f7f0dc" stroke="#252b25" stroke-width="2"/><path d="M13 46h8m95 0h10M29 43h76" stroke="#252b25" stroke-width="4" stroke-dasharray="7 5"/><g fill="#252b25"><circle cx="34" cy="59" r="13"/><circle cx="106" cy="59" r="13"/></g><g fill="#f7f0dc"><circle cx="34" cy="59" r="5"/><circle cx="106" cy="59" r="5"/></g></svg>`;
+const brand=()=>`<button class="brand" aria-label="Ada Mesaisi" title="Ada Mesaisi"><span class="brand-mark">a<span>m</span><i></i></span><span>ada mesaisi<span class="brand-caption">KUTAY’IN TAKSİ GÜNLÜĞÜ</span></span></button>`;
+const header=action=>`<header class="shell nav">${brand()}${action}</header>`;
+const footer=()=>`<footer class="shell"><div class="checker"></div><span>Bir ada, bir taksi, benim hikâyem.</span><span>KIBRIS ↗</span></footer>`;
+let records=[],vault,timer,screen=0;
+function toast(s){$('#toast').textContent=s;$('#toast').classList.add('visible');clearTimeout(timer);timer=setTimeout(()=>$('#toast').classList.remove('visible'),3000);}
+function delta(n,label=''){return n==null?`<span class="muted">Kıyas için kayıt yok</span>`:`<span class="delta ${n<0?'down':''}">${n>=0?'↗':'↘'} %${decimal.format(Math.abs(n))}</span> ${label}`;}
+function stat(label,value,detail='',cls=''){return `<article class="stat ${cls}"><span class="eyebrow">${label}</span><strong>${value}</strong><small>${detail}</small></article>`;}
+function sectionTitle(kicker,title,extra=''){return `<div class="section-title"><div><span class="eyebrow">${kicker}</span><h2>${title}</h2></div>${extra}</div>`;}
+async function load(){if(offline)return JSON.parse(offline.textContent);const res=await fetch(pages?'./vardiyalar.json':'/api/public',{cache:'no-cache'});if(!res.ok)throw new Error('Vardiyalar yüklenemedi.');return (await res.json()).reports;}
+function celebrate(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;const el=document.createElement('div');el.className='confetti';el.setAttribute('aria-hidden','true');el.innerHTML=Array.from({length:35},(_,i)=>`<i style="--x:${(i*29)%100}%;--r:${i*33}deg;--delay:${i%8*.05}s;--c:${['#f6bd38','#dc674c','#518477'][i%3]}"></i>`).join('');document.body.append(el);setTimeout(()=>el.remove(),2200);}
+function secret(){let taps=[];$('.brand').onclick=()=>{const now=Date.now();taps=taps.filter(t=>now-t<4500);taps.push(now);if(taps.length===5){taps=[];login();}};}
+function lineChart(rows,key='wage',compare=null){
+ if(!rows.length)return '<p class="empty">Bu aralıkta kayıt yok.</p>';
+ const w=800,h=230,pad=30,vals=rows.map(r=>r[key]),max=Math.max(...vals,...(compare||[]),1)*1.15;
+ const point=(v,i)=>[pad+(rows.length===1?.5:i/(rows.length-1))*(w-2*pad),h-pad-v/max*(h-pad*2)];
+ const pts=vals.map(point),path=pts.map(([x,y],i)=>`${i?'L':'M'}${x},${y}`).join(' '),baseline=h-pad;
+ return `<div class="line-wrap"><svg class="line-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${key==='km'?'Kilometre':key==='fuel'?'Yakıt':'Kazanç'} grafiği; tarih düğmelerinden değerleri inceleyebilirsin."><defs><linearGradient id="wash" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#e6ac31" stop-opacity=".3"/><stop offset="1" stop-color="#e6ac31" stop-opacity=".01"/></linearGradient></defs>${[.25,.5,.75,1].map(v=>`<path d="M30 ${baseline-v*(h-pad*2)}H770" stroke="currentColor" stroke-opacity=".12" stroke-dasharray="3 6"/>`).join('')}<path d="${path} L${pts.at(-1)[0]},${baseline} L${pts[0][0]},${baseline}Z" fill="url(#wash)"/>${compare?`<path d="${compare.map((v,i)=>{const [x,y]=point(v,i);return `${i?'L':'M'}${x},${y}`;}).join(' ')}" fill="none" stroke="#94a9a1" stroke-width="3" stroke-dasharray="5 7"/>`:''}<path class="chart-stroke" d="${path}" fill="none" stroke="#b88016" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>${pts.map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="${i===pts.length-1?6:3}" fill="#f6bd38" stroke="#8b641b" stroke-width="1"><title>${short(rows[i].date)}: ${key==='km'?number(vals[i])+' km':money(vals[i])}</title></circle>`).join('')}</svg></div><div class="axis"><span>${short(rows[0].date)}</span><span>${short(rows.at(-1).date)}</span></div>`;
 }
-const brand=()=>`<button class="brand" type="button"><img src="./icon.svg" alt="" width="43" height="43"><span>Ada Mesaisi<small>KIBRIS TAKSİ GÜNLÜĞÜ</small></span></button>`;
-const footer=()=>`<footer class="shell footer"><div class="checker" aria-hidden="true"></div><span>Kıbrıs’ta direksiyon başından. <b>✦</b></span>${pagesMode?'':`<a class="quiet" href="/sofor" aria-label="Sürücü girişi" title="Sürücü girişi">${ico('lock',15)}</a>`}</footer>`;
-const header=(action)=>`<header class="shell nav">${brand()}${action}</header>`;
-const metric=(label,val,caption,icon,feature=false)=>`<article class="metric ${feature?'feature':''}"><div class="metric-top"><span class="metric-icon">${ico(icon)}</span><span>${label}</span></div><strong>${val}</strong><small>${caption}</small></article>`;
-const labelFor={day:'Son vardiyadaki kazancım',week:'Haftalık kazancım',month:'Aylık kazancım'};
-function chart(rs,key,formatter) {
-  if(!rs.length) return '<div class="empty">Bu dönemde henüz vardiya kaydı yok.</div>';
-  const max=Math.max(1,...rs.map(r=>r[key]));
-  return `<div class="chart-scroll"><div class="bars" style="--count:${rs.length}">${rs.slice().reverse().map(r=>`<div class="bar-col"><span class="bar-value">${formatter(r[key])}</span><div class="bar-track"><div class="bar" style="--bar:${Math.max(2,r[key]/max*100)}%"></div></div><span class="bar-date">${short(r.date)}</span></div>`).join('')}</div></div>`;
-}
-function table(rs,privateView=false) {
-  if(!rs.length) return '<div class="empty">Gösterilecek kayıt yok.</div>';
-  return `<div class="table-scroll"><table><thead><tr><th scope="col">Vardiya</th><th scope="col">Yol</th>${privateView?'<th scope="col">Yakıt</th>':''}<th scope="col">${privateView?'Kasa':'Kazancım'}</th>${privateView?'<th scope="col">Payım</th><th scope="col"><span class="sr-only">İşlem</span></th>':''}</tr></thead><tbody>${rs.map(r=>`<tr><th scope="row">${short(r.date)} <small>${r.date.slice(0,4)}</small></th><td>${km(r.km)}</td>${privateView?`<td>${r.fuel===null?'—':money(r.fuel)}</td>`:''}<td class="cash">${money(privateView?r.cash:publicEarnings(r))}</td>${privateView?`<td class="cash">${money(share(r.cash))}</td><td><button class="text-btn edit" data-date="${r.date}">Düzenle</button></td>`:''}</tr>`).join('')}</tbody></table></div>`;
+function plotControl(rows,target,key='wage'){
+ const el=$(target);if(!rows.length){el.innerHTML='<p class="empty">Bu aralıkta kayıt yok.</p>';return;}
+ let selected=rows.length-1;
+ el.innerHTML=`<div class="chart-readout" aria-live="polite"></div>${lineChart(rows,key)}<div class="date-pills" aria-label="Grafikten bir gün seç">${rows.map((r,i)=>`<button data-point="${i}" aria-pressed="${i===selected}">${format(r.date,{day:'numeric'})}<small>${format(r.date,{month:'short'})}</small></button>`).join('')}</div>`;
+ const draw=()=>{const r=rows[selected];el.querySelector('.chart-readout').innerHTML=`<strong>${key==='km'?number(r.km)+' km':money(r[key])}</strong><span>${long(r.date)}<br>${number(r.km)} km${key!=='km'&&r.km?' · '+rate(r[key]/r.km)+' / km':''}</span>`;el.querySelectorAll('[data-point]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.point===selected)));};
+ el.querySelectorAll('[data-point]').forEach(b=>b.onclick=()=>{selected=+b.dataset.point;draw();});draw();
 }
 async function publicPage(){
-  document.title='Ada Mesaisi — Kıbrıs Taksi Günlüğü';
-  app.innerHTML=header(`<button id="share" class="button outline">${ico('share',16)} <span>Paylaş</span></button>`)+`
-  <main class="shell">
-    <section class="hero night-hero" aria-labelledby="hero-title">
-      <img class="night-photo" src="./hero.jpg" alt="Gün batımında Kıbrıs sahil yolunda ilerleyen taksi" fetchpriority="high">
-      <div class="hero-copy">
-        <h1 id="hero-title">Kıbrıs’ta<br><em>taksi günlüğüm.</em></h1>
-        <p>Vardiya vardiya kazancım ve yaptığım yol.</p>
-        <div class="hero-actions">
-          <a class="button yellow" href="#kasa">Kazanca bak ${ico('arrow',16)}</a>
-          <button class="horn" id="horn" type="button" aria-label="Bip bip efekti">Bip bip <span aria-hidden="true">↗</span></button>
-        </div>
-      </div>
-      <div id="confetti" class="confetti" aria-hidden="true"></div>
-    </section>
-    <section id="kasa" class="section">
-      <div class="section-head"><div><h2>Kazanç özeti</h2></div><div id="report-date" class="date-chip"></div></div>
-      <div id="public-data" aria-live="polite"><div class="empty">Taksimetre açılıyor…</div></div>
-    </section>
-  </main>`+footer();
-  let taps=0,lastTap=0;
-  async function showLogin() {
-    if (pagesMode) vault=await import('./vault.js?v=3');
-    login();
-    get('#password').focus();
-  }
-  get('.brand').onclick=async()=>{
-    const now=Date.now();
-    taps=now-lastTap>1500?1:taps+1;
-    lastTap=now;
-    if(taps!==5) return;
-    taps=0;
-    try {
-      await showLogin();
-    } catch {toast('Sürücü paneli açılamadı. Sayfayı yenileyip tekrar dene.');}
-  };
-  const confetti=get('#confetti');
-  let confettiTimer;
-  function celebrate() {
-    if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    clearTimeout(confettiTimer);
-    confetti.innerHTML=Array.from({length:24},(_,i)=>
-      `<i style="--x:${4+(i*31)%93}%;--delay:${(i%7)*45}ms;--drift:${(i%2?-1:1)*(18+i*3)}px"></i>`).join('');
-    confettiTimer=setTimeout(()=>confetti.replaceChildren(),2100);
-  }
-  get('#horn').onclick=()=>{
-    celebrate();
-    toast('Bip bip! 🚕');
-  };
-  celebrate();
-  get('#share').onclick=async()=>{
-    if(!pagesMode && ['127.0.0.1','localhost','[::1]'].includes(location.hostname)){
-      toast('Bu adres şimdilik bu Mac’te açılır.');
-      return;
-    }
-    const url=new URL('./',location.href).href;
-    try {
-      if(navigator.share) await navigator.share({title:'Ada Mesaisi',text:'Kıbrıs taksi günlüğüme göz at!',url});
-      else {await navigator.clipboard.writeText(url);toast('Bağlantı kopyalandı.');}
-    } catch(e){if(e.name!=='AbortError') window.prompt('Paylaşmak için bağlantıyı kopyala:',url);}
-  };
-  try {
-    const {reports,demo}=await api('public');
-    if(!get('#public-data')) return;
-    if(!reports.length){
-      get('#public-data').innerHTML=`<div class="metrics">${Object.values(labelFor)
-        .map((label,i)=>metric(label,'—','Kayıt bekleniyor',['wallet','calendar','chart'][i],!i)).join('')}</div>`;
-      return;
-    }
-    const shifts=reports.map(row=>({...row,earnings:publicEarnings(row)}));
-    const anchor=shifts[0].date;
-    get('#report-date').innerHTML=ico('calendar',15)+' Son mesai · '+long(anchor);
-    const periods=Object.fromEntries(Object.keys(labelFor).map(mode=>[mode,inside(shifts,period(mode,anchor))]));
-    get('#public-data').innerHTML=`${demo?'<div class="demo-note"><span>ÖRNEK</span> İki vardiyalık deneme turu</div>':''}
-    <div class="metrics">${Object.entries(labelFor).map(([mode,label],i)=>metric(label,money(total(periods[mode],'earnings')),km(total(periods[mode],'km'))+(i?' · '+periods[mode].length+' vardiya':''),['wallet','calendar','chart'][i],!i)).join('')}</div>
-    <div class="public-highlights"><span><b>${reports.length}</b> vardiya</span><span><b>${km(total(reports,'km'))}</b> toplam yol</span><span><b>${money(bestBy(shifts,'earnings').earnings)}</b> en iyi vardiya</span></div>
-    <div class="panel overview"><div class="panel-head"><div><span class="eyebrow">TAKSİMETRE GRAFİĞİ</span><h3>Gün gün kazancım</h3><p class="sub" id="public-period"></p></div>
-    <div class="segmented" aria-label="Grafik dönemi"><button data-mode="week" aria-pressed="true">Hafta</button><button data-mode="month" aria-pressed="false">Ay</button></div></div>
-    <div id="public-chart"></div></div>
-    <div class="panel history"><div class="panel-head"><div><span class="eyebrow">GERİYE BAKIŞ</span><h3>Son turlar</h3></div>${ico('road',23)}</div>${table(reports.slice(0,10))}</div>`;
-    const draw=mode=>{
-      get('#public-period').textContent=periodName(mode,period(mode,anchor));
-      get('#public-chart').innerHTML=chart(periods[mode],'earnings',money);
-      document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
-    };
-    document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>draw(b.dataset.mode));draw('week');
-  } catch {if(get('#public-data')) get('#public-data').innerHTML='<div class="empty">Kasa verileri yüklenemedi. Sayfayı yenileyip tekrar dene.</div>';}
+ const currentScreen=++screen;
+ document.title='Ada Mesaisi · Kutay’ın taksi günlüğü';
+ app.innerHTML=header('<button class="button outline" id="share">Paylaş '+arrow+'</button>')+'<main class="shell"><div class="empty">Taksimetre açılıyor…</div></main>'+footer();secret();
+ $('#share').onclick=async()=>{const url=new URL('./',location.href).href;try{if(navigator.share)await navigator.share({title:'Ada Mesaisi',text:'Kıbrıs’tan bir taksi günlüğü.',url});else{await navigator.clipboard.writeText(url);toast('Bağlantı kopyalandı.');}}catch(e){if(e.name!=='AbortError')toast('Bağlantıyı adres çubuğundan kopyalayabilirsin.');}};
+ try{records=normalize(await load());}catch(e){if(screen!==currentScreen)return;$('main').innerHTML='<div class="empty">Vardiyalar yüklenemedi. <button class="button" id="retry">Tekrar dene</button></div>';$('#retry').onclick=publicPage;return;}
+ if(screen!==currentScreen)return;
+ if(!records.length){$('main').innerHTML='<div class="empty">İlk mesainin hikâyesi yakında burada.</div>';return;}
+ const rows=records.map(r=>({...r,wage:r.wage+50000})),latest=rows.at(-1),month=latest.date.slice(0,7),monthly=rows.filter(r=>r.date.startsWith(month)),weekly=rows.filter(r=>r.date>=weekStart(latest.date)),best=rows.reduce((a,b)=>a.wage>b.wage?a:b);
+ $('main').innerHTML=`<section class="hero"><div class="hero-copy"><span class="eyebrow"><i class="live-dot"></i> KIBRIS’TAN BİLDİRİYORUM</span><h1>Ada küçük.<br>Mesai <em>büyük.</em></h1><p>Direksiyon bende. Günün hikâyesi burada.</p><a href="#gunluk" class="text-link">Günlüğe göz at <span>↓</span></a><div class="hero-sign">Kutay <svg viewBox="0 0 100 25" aria-hidden="true"><path d="M2 20Q38 0 96 10M66 3l30 7-24 12" fill="none" stroke="currentColor" stroke-width="2"/></svg></div></div><div class="postcard"><img src="./hero.jpg" alt="Kıbrıs kıyısında gün batımı ve sahil yolunda bir taksi" fetchpriority="high"><div class="postcard-top"><span>GREETINGS FROM<br><b>CYPRUS</b></span><span class="sun">✳</span></div><span class="photo-caption">Biraz deniz. Bolca yol.</span><button class="taxi-sticker" id="horn" aria-label="Taksiye dokun ve kutla">${taxi}<span>bip bip!</span></button></div><div class="ticket"><span class="eyebrow">SON MESAİDEN CEBE KALAN</span><strong>${money(latest.wage)}</strong><div><span>${short(latest.date)} · ${format(latest.date,{weekday:'long'})}</span><b>${number(latest.km)} km ↗</b></div></div></section>
+ <div class="road-strip"><span>KIBRIS YOLLARI</span><div class="road-line"><i>↗</i></div><span>${number(sum(rows,'km'))} KM VE DEVAMI…</span></div>
+ <section id="gunluk"><div class="public-stats">${stat('BU HAFTA',money(sum(weekly)),`${weekly.length} mesai · ${short(weekStart(latest.date))} – ${short(addDays(weekStart(latest.date),6))}`)}${stat('BU AY',money(sum(monthly)),`${monthName(month)} · ${monthly.length} mesai`)}${stat('BİRİKEN HİKÂYE',money(sum(rows)),`${rows.length} mesai · ${short(rows[0].date)} tarihinden beri`,'dark-stat')}</div></section>
+ <section class="public-grid section"><div class="panel chart-panel">${sectionTitle('GÜNLÜK', 'Yolun karşılığı.',`<div class="segmented" aria-label="Grafik dönemi"><button data-public-range="7" aria-pressed="true">Son 7 mesai</button><button data-public-range="month" aria-pressed="false">Bu ay</button></div>`)}<div id="public-chart"></div></div><aside class="record-card"><span class="eyebrow">ŞİMDİLİK REKORUM</span><div class="record-sun">✳</div><strong>${money(best.wage)}</strong><p>${long(best.date)}<br>${number(best.km)} kilometrelik bir gün.</p><div class="record-note">Çıta burada.<br>Gözüm daha yukarıda. ↗</div></aside></section>
+ <section class="section">${sectionTitle('YOL DEFTERİ','Son mesailer.',`<span class="muted">Son kayıt · ${short(latest.date)}</span>`)}<div class="shift-list">${rows.slice(-7).reverse().map((r,i)=>`<article><span class="shift-index">${String(i+1).padStart(2,'0')}</span><div><h3>${format(r.date,{weekday:'long'})}</h3><span>${long(r.date)}</span></div><span class="shift-distance">${number(r.km)} <small>km</small></span><strong>${money(r.wage)}</strong>${arrow}</article>`).join('')}</div></section>`;
+ const draw=range=>{plotControl(range==='month'?monthly:rows.slice(-7),'#public-chart');$$('[data-public-range]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.publicRange===range)));};
+ $$('[data-public-range]').forEach(b=>b.onclick=()=>draw(b.dataset.publicRange));draw('7');$('#horn').onclick=()=>{celebrate();toast('Bip bip! Yol açık. 🚕');};
 }
-function login(message=''){
-  document.title='Sürücü Paneli — Ada Mesaisi';
-  app.innerHTML=header(`<a class="button outline" href="./">Vitrine dön ${ico('external',16)}</a>`)+`
-    <main class="shell login-wrap"><section class="panel login">
-    <div class="metric-icon">${ico('lock',23)}</div><span class="eyebrow">ÖZEL ALAN</span><h1>Sürücü girişi</h1>
-    <p>Vardiya raporlarını ve kendi kazancını görmek için giriş yap.</p>
-    <form id="login"><label for="password">Şifre</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="512"  required><p class="error" id="login-error" role="alert">${escape(message)}</p><button class="button dark" type="submit">Giriş yap ${ico('external',16)}</button></form></section></main>`+footer();
-  get('#login').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;get('#login-error').textContent='';
-    try {await api('admin/login',{password:get('#password').value});await (pagesMode?driverDashboard():adminPage());}
-    catch(err){get('#login-error').textContent=err.message;} finally{b.disabled=false;}
-  };
+function login(){
+ screen++;
+ document.title='Direksiyon başı · Ada Mesaisi';
+ app.innerHTML=header('<button class="button outline" id="home">Günlüğe dön ↗</button>')+`<main class="shell login-layout"><div class="login-illustration"><span class="eyebrow">MESAİNİN DİĞER TARAFI</span><h1>Direksiyon<br> <em>sende.</em></h1><div class="login-road">${taxi}</div><p>Rakamları açalım. Yarınki yolu biraz daha iyi çizelim.</p></div><section class="login-card"><span class="eyebrow">SADECE SÜRÜCÜYE</span><h2>Hoş geldin,<br>Kutay.</h2><form id="login"><label for="password">Panel şifren</label><div class="password-field"><input id="password" type="password" inputmode="numeric" autocomplete="current-password" required maxlength="512" placeholder="••••"><button type="button" id="reveal" aria-label="Şifreyi göster">Göster</button></div><p id="login-error" class="error" role="alert"></p><button class="button primary" type="submit">Kontağı çevir ${arrow}</button></form><div class="login-checker checker"></div></section></main>`+footer();
+ $('#home').onclick=publicPage;$('#password').focus();$('#reveal').onclick=()=>{const p=$('#password'),show=p.type==='password';p.type=show?'text':'password';$('#reveal').textContent=show?'Gizle':'Göster';$('#reveal').setAttribute('aria-label',show?'Şifreyi gizle':'Şifreyi göster');};
+ $('#login').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;$('#login-error').textContent='';try{if(pages){vault??=await import('./vault.js');await vault.vaultApi('admin/login',{password:$('#password').value});}else{const res=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#password').value})});if(!res.ok)throw new Error('Şifre doğru değil.');const data=await fetch('/api/admin/reports');if(data.ok)records=normalize((await data.json()).reports);}await dashboard();window.scrollTo(0,0);}catch(err){$('#login-error').textContent=err.message||'Panel açılamadı.';b.disabled=false;}};
 }
-async function driverDashboard() {
-  const privateRows=offlineReports?JSON.parse(offlineReports.textContent):null;
-  let publicRows=[],feedError=false;
-  if(!privateRows) {
-    try {({reports:publicRows}=await api('public'));}
-    catch {feedError=true;}
-  }
-  const records=(privateRows??publicRows.map(row=>({
-    date:row.date,km:row.km,wage:publicEarnings(row)-mealAllowance,fuel:null,cash:null
-  }))).slice().sort((a,b)=>b.date.localeCompare(a.date));
-  const newest=records[0]?.date||cyprus();
-  let mode='month',anchor=newest,plot='wage';
-  app.innerHTML=header(`<div class="nav-actions"><a class="button outline" href="${offlineReports?'https://kutayatak.github.io/ada-mesaisi/':'./'}">Vitrin</a>${offlineReports?'':'<button class="button outline" id="logout">Kilitle</button>'}</div>`)+`
-    <main class="shell admin driver-dashboard">
-      <header class="driver-head">
-        <span class="eyebrow">${ico('lock',14)} SÜRÜCÜ PANELİ</span>
-        <h1>Vardiya özeti</h1>
-        <p>${records.length?short(records.at(-1).date)+' – '+long(newest):'Vardiya kaydı bekleniyor'}</p>
-      </header>
-      <div id="admin-lifetime" class="lifetime"></div>
-      ${!privateRows?'<p class="access-note">Yakıt ve ham kasa, Mac’teki özel vardiya özetinde.</p>':''}
-      ${!records.length && feedError?'<p class="error">Vardiyalara ulaşılamadı. Sayfayı yenileyip tekrar dene.</p>':''}
-      <section class="panel admin-stats">
-        <div class="admin-controls">
-          <div class="segmented" aria-label="Kazanç dönemi">
-            <button data-driver-period="week">Hafta</button><button data-driver-period="month">Ay</button><button data-driver-period="all">Tümü</button>
-          </div>
-          <div class="stepper" id="driver-stepper">
-            <button class="icon-btn" id="prev" aria-label="Önceki dönem">${ico('left',16)}</button>
-            <span id="admin-period"></span><button class="icon-btn" id="next" aria-label="Sonraki dönem">${ico('right',16)}</button>
-          </div>
-        </div>
-        <div id="admin-data" aria-live="polite"></div>
-        <div class="trend-head"><h3>Vardiya grafiği</h3>
-          <div class="segmented" aria-label="Grafik göstergesi">
-            <button data-driver-plot="wage">Kazanç</button><button data-driver-plot="km">Yol</button>
-            ${privateRows?'<button data-driver-plot="fuel">Yakıt</button>':''}
-          </div>
-        </div>
-        <div id="admin-chart"></div>
-      </section>
-      <section class="panel history"><div class="panel-head"><h3>Vardiya dökümü</h3>${ico('road',23)}</div><div id="driver-table"></div></section>
-    </main>`+footer();
-  const stat=(label,value,detail)=>`<div><small>${label}</small><strong>${value}</strong><span>${detail}</span></div>`;
-  const peak=records.reduce((best,row)=>!best||wageOf(row)>wageOf(best)?row:best,null);
-  get('#admin-lifetime').innerHTML=
-    stat('TOPLAM PAYIM',money(wagesFor(records)),records.length+' vardiya · %40 pay')+
-    stat('TOPLAM YOL',km(total(records,'km')),records.length?km(total(records,'km')/records.length)+' / vardiya':'—')+
-    stat('EN İYİ VARDİYA',peak?money(wageOf(peak)):'—',peak?long(peak.date):'—')+
-    stat('TOPLAM YAKIT',privateRows?money(total(records,'fuel')):'—',privateRows&&total(records,'km')?money(total(records,'fuel')/total(records,'km'))+' / km':'—');
-  function draw() {
-    const all=mode==='all';
-    const p=all?null:period(mode,anchor);
-    const rs=all?records:inside(records,p);
-    const wages=wagesFor(rs), distance=total(rs,'km'), fuel=privateRows?total(rs,'fuel'):null;
-    let comparison='Vardiya başına';
-    if(p && rs.length) {
-      const d=date(p.start);d.setUTCDate(d.getUTCDate()-1);
-      const prev=inside(records,period(mode,iso(d)));
-      if(prev.length && wagesFor(prev)>0) {
-        const change=100*(wages/rs.length/(wagesFor(prev)/prev.length)-1);
-        comparison=`${change>=0?'+':''}${num(change)}% · önceki dönemin günlük ortalamasına göre`;
-      }
-    }
-    document.querySelectorAll('[data-driver-period]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.driverPeriod===mode)));
-    get('#driver-stepper').hidden=all;
-    if(p) {
-      get('#admin-period').textContent=periodName(mode,p);
-      get('#prev').disabled=!records.length||records.at(-1).date>=p.start;
-      get('#next').disabled=newest<=p.end;
-    }
-    get('#admin-data').innerHTML=`<div class="metrics admin-metrics">
-      ${metric('Benim kazancım',money(wages),rs.length+' vardiya · %40 pay','wallet',true)}
-      ${metric('Günlük ortalama',rs.length?money(wages/rs.length):'—',comparison,'chart')}
-      ${metric('Yol',km(distance),distance?money(wages/distance)+' pay / km':'—','road')}
-      ${metric('Yakıt',fuel===null?'—':money(fuel),fuel!==null&&distance?money(fuel/distance)+' / km':'—','fuel')}
-      </div>`;
-    const chartRows=rs.map(row=>({...row,wage:wageOf(row)}));
-    document.querySelectorAll('[data-driver-plot]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.driverPlot===plot)));
-    get('#admin-chart').innerHTML=chart(chartRows,plot,plot==='km'?km:money);
-    get('#driver-table').innerHTML=rs.length?`<div class="table-scroll"><table><thead><tr>
-      <th scope="col">Vardiya</th><th scope="col">Payım</th><th scope="col">Yol</th>
-      ${privateRows?'<th scope="col">Yakıt</th><th scope="col">Ham kasa</th>':''}
-      </tr></thead><tbody>${rs.map(row=>`<tr><th scope="row">${short(row.date)}</th><td class="cash">${money(wageOf(row))}</td><td>${km(row.km)}</td>
-      ${privateRows?`<td>${money(row.fuel)}</td><td>${money(row.cash)}</td>`:''}</tr>`).join('')}</tbody></table></div>`
-      :'<div class="empty">Bu dönemde vardiya kaydı yok.</div>';
-  }
-  function step(direction) {
-    const d=date(period(mode,anchor).start);
-    if(mode==='week') d.setUTCDate(d.getUTCDate()+direction*7);
-    else d.setUTCMonth(d.getUTCMonth()+direction);
-    anchor=iso(d);draw();
-  }
-  document.querySelectorAll('[data-driver-period]').forEach(b=>b.onclick=()=>{mode=b.dataset.driverPeriod;anchor=newest;draw();});
-  document.querySelectorAll('[data-driver-plot]').forEach(b=>b.onclick=()=>{plot=b.dataset.driverPlot;draw();});
-  get('#prev').onclick=()=>step(-1);
-  get('#next').onclick=()=>step(1);
-  if(!offlineReports) get('#logout').onclick=async()=>{await api('admin/logout',{});login();};
-  draw();
+async function dashboard(){
+ screen++;
+ if(!records.length&&!offline)records=normalize(await load());
+ if(offline)records=normalize(JSON.parse(offline.textContent));
+ if(!records.length){app.innerHTML=header('')+'<main class="shell empty">Henüz vardiya kaydı yok.</main>';return;}
+ document.title='Kutay’ın kokpiti · Ada Mesaisi';
+ const latest=records.at(-1),monthGroups=months(records),weekGroups=weeks(records),privateData=records.every(r=>r.fuel!=null),latestMonth=latest.date.slice(0,7);
+ let selectedMonth=latestMonth,metric='wage',planned=26,selectedWeekday=5;
+ const peak=records.reduce((a,b)=>a.wage>b.wage?a:b),fullWeeks=weekGroups.filter(w=>w.rows.length===7),weekAvg=fullWeeks.length?average(fullWeeks,'total'):average(weekGroups,'total');
+ app.innerHTML=header(`<div class="nav-actions"><button class="button outline" id="home">Günlük ↗</button>${offline?'':'<button class="lock-button" id="logout" aria-label="Paneli kilitle">Kilitle</button>'}</div>`)+`
+ <main class="shell cockpit"><header class="dashboard-head"><div><span class="eyebrow">SÜRÜCÜ KOKPİTİ / KUTAY</span><h1>İşin <em>hesap tarafı.</em></h1><p>Son mesai: ${long(latest.date)} · ${records.length} kayıt</p></div><span class="dashboard-stamp">%40<br><small>SENİN PAYIN</small></span></header>
+ <nav class="dashboard-nav" aria-label="Panel bölümleri"><a href="#aylik">Ayın özeti</a><a href="#haftalar">Haftalar</a><a href="#gunler">Günleri kıyasla</a><a href="#arsiv">Arşiv</a></nav>
+ <div class="lifetime-strip"><div><span>Tüm aylar toplamı</span><strong>${money(sum(records))}</strong></div><div><span>${fullWeeks.length?'Tam hafta ortalaması':'Kayıtlı hafta ortalaması'}</span><strong>${money(weekAvg)}</strong><small>${fullWeeks.length||weekGroups.length} hafta üzerinden</small></div><div><span>Mesai başına</span><strong>${money(average(records))}</strong></div><div><span>En iyi gün · ${short(peak.date)}</span><strong>${money(peak.wage)}</strong></div></div>
+ <section id="aylik" class="section">${sectionTitle('BÜYÜK RESİM','Bu ay nasıl gidiyor?',`<label class="select-label"><span class="sr-only">Ay seç</span><select id="month-select">${monthGroups.slice().reverse().map(m=>`<option value="${m.id}">${monthName(m.id)}</option>`).join('')}</select></label>`)}<div id="month-summary"></div>
+ <div class="analysis-grid"><section class="panel monthly-chart"><div class="section-title"><div><span class="eyebrow">MESAİNİN RİTMİ</span><h3>Gün gün.</h3></div><div class="segmented" aria-label="Grafik ölçüsü"><button data-metric="wage" aria-pressed="true">Payım</button><button data-metric="km" aria-pressed="false">Km</button>${privateData?'<button data-metric="fuel" aria-pressed="false">Yakıt</button>':''}</div></div><div id="month-chart"></div></section><section class="forecast-card" id="forecast"></section></div>
+ <section class="panel month-compare" id="month-compare"></section></section>
+ <section id="haftalar" class="section">${sectionTitle('HAFTA HAFTA','Tempo ne durumda?')}<div id="weekly"></div></section>
+ <section id="gunler" class="section">${sectionTitle('AYNI GÜN, BAŞKA MESAİ','Cumartesinin hakkı ayrı mı?')}<div class="panel"><p class="sub">Bir günü seç; tüm kayıtlardaki ortalamasını ve son mesaisini önceki aynı günlerle kıyasla.</p><div class="weekday-tabs" aria-label="Haftanın günü">${weekdays.map((d,i)=>`<button data-weekday="${i}" aria-label="${d}" aria-pressed="${i===5}"><span>${['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'][i]}</span></button>`).join('')}</div><div id="weekday-result"></div></div>
+ <section class="panel compare-card"><div class="section-title"><div><span class="eyebrow">İKİ GÜNÜ YAN YANA KOY</span><h3>Hangisi daha verimli?</h3></div></div><div class="compare-selectors"><label>Birinci mesai<select id="day-a">${dateOptions(records,latest.date)}</select></label><span>vs.</span><label>İkinci mesai<select id="day-b">${dateOptions(records,records.at(-2)?.date)}</select></label></div><div id="day-comparison" aria-live="polite"></div></section></section>
+ <section id="arsiv" class="section">${sectionTitle('HER KURUŞUN HİKÂYESİ','Aylar & kayıtlar.')}<div class="panel"><div class="table-scroll"><table><thead><tr><th>Ay</th><th>Payım</th><th>Mesai</th><th>Ort. / mesai</th><th>Yol</th></tr></thead><tbody>${monthGroups.slice().reverse().map(m=>`<tr><th>${monthName(m.id)}<small>${m.rows[0].date.slice(-2)}–${m.rows.at(-1).date.slice(-2)} arası kayıt</small></th><td class="bold">${money(m.total)}</td><td>${m.rows.length}</td><td>${money(m.avg)}</td><td>${number(m.km)} km</td></tr>`).join('')}</tbody><tfoot><tr><th>Hepsi</th><td>${money(sum(records))}</td><td>${records.length}</td><td>${money(average(records))}</td><td>${number(sum(records,'km'))} km</td></tr></tfoot></table></div></div>
+ <details class="panel ledger"><summary>Vardiya defterini aç <span>${records.length} kayıt ↗</span></summary><div class="table-scroll"><table><thead><tr><th>Tarih</th><th>Payım</th><th>Km</th><th>Pay / km</th>${privateData?'<th>Yakıt</th><th>Yakıt / km</th><th>Kasa</th>':''}</tr></thead><tbody>${records.slice().reverse().map(r=>`<tr><th>${short(r.date)}<small>${format(r.date,{weekday:'long'})}</small></th><td class="bold">${money(r.wage)}</td><td>${number(r.km)}</td><td>${rate(r.km?r.wage/r.km:null)}</td>${privateData?`<td>${money(r.fuel)}</td><td>${rate(r.km?r.fuel/r.km:null)}</td><td>${money(r.cash)}</td>`:''}</tr>`).join('')}</tbody></table></div></details>
+ ${privateData?`<div class="fuel-line lifetime-fuel"><span>Tüm kayıtların yakıtı <b>${money(sum(records,'fuel'))}</b></span><span>Ortalama yakıt / km <b>${rate(sum(records,'km')?sum(records,'fuel')/sum(records,'km'):null)}</b></span></div>`:''}<p class="data-note">Payın, mesajdaki kalan kasanın %40’ı. ${privateData?'Yakıt ayrıca izlenir; payından ikinci kez düşülmez.':'Yakıt dökümü Mac’teki özel panelde bulunur.'} Kayıtsız tarihler izin günü kabul edilmez. Sonuçlar son kayıt tarihi itibarıyla hesaplanır.</p></section></main>`+footer();
+ $('#home').onclick=()=>{if(offline)location.href='https://kutayatak.github.io/ada-mesaisi/';else publicPage();};if($('#logout'))$('#logout').onclick=async()=>{if(vault)await vault.vaultApi('admin/logout',{});else await fetch('/api/admin/logout',{method:'POST'});login();};
+ function renderMonth(){
+  const s=monthStats(records,selectedMonth,planned),previousDate=dayDate(selectedMonth+'-01');previousDate.setUTCMonth(previousDate.getUTCMonth()-1);const prevMonth=iso(previousDate).slice(0,7),prev=monthStats(records,prevMonth,planned),active=selectedMonth===latestMonth;
+  $('#month-summary').innerHTML=`<div class="summary-grid">${stat('BU AYKİ PAYIM',money(s.total),`${s.rows.length} kayıtlı mesai`,'yellow-stat')}${stat('GEÇEN AYKİ PAYIM',prev.rows.length?money(prev.total):'—',prev.rows.length?`${monthName(prevMonth)} · ${prev.rows.length} kayıt`:'Önceki aya ait kayıt yok')}${stat('ORTALAMA / MESAİ',money(s.avg),delta(change(s.avg,prev.avg),'önceki aya göre'))}${stat('KİLOMETRE BAŞINA PAY',rate(s.km?s.total/s.km:null),`${number(s.km)} km toplam yol`)}</div>${privateData?`<div class="fuel-line"><span>↳ Yakıt: <b>${money(s.fuel)}</b></span><span>Km başına <b>${rate(s.km?s.fuel/s.km:null)}</b></span><span>Kasa / km <b>${rate(s.km?sum(s.rows,'cash')/s.km:null)}</b></span></div>`:''}`;
+  plotControl(s.rows,'#month-chart',metric);
+  $('#forecast').innerHTML=`<span class="eyebrow">${active?'AY SONU ROTASI':'BU AYIN TEMPOSUYLA'}</span><h3>${active?'Böyle giderse…':'Ay sonu senaryosu'}</h3><strong>${money(s.projection)}</strong><span class="forecast-label">${s.count} mesailik ay senaryosu</span><label class="range-label" for="planned">Planlanan mesai <b id="planned-label">${s.count} gün</b></label><input id="planned" type="range" min="${Math.max(1,s.rows.length)}" max="${s.days}" value="${s.count}" aria-label="Ay için planlanan mesai sayısı"><div class="forecast-secondary"><span>İlk 7 günün temposuyla</span><b>${money(s.firstProjection)}</b></div><p>${s.firstProjection==null?'İlk 7 takvim gününde en az 3 kayıt gerekiyor.':`İlk 7 takvim günündeki ${s.first.length} mesainin ortalaması × ${s.count} gün.`}</p><details><summary>Tahmin nasıl hesaplanıyor?</summary><p>${money(s.total)} gerçekleşen + kalan ${s.count-s.rows.length} mesai × ${money(s.avg)} ortalama. Eksik kayıtlar hesaba katılmaz. Bu bir senaryo; kesin kazanç tahmini değil.</p></details>`;
+  $('#planned').oninput=e=>{planned=+e.target.value;const f=monthStats(records,selectedMonth,planned);$('#planned-label').textContent=f.count+' gün';$('#forecast>strong').textContent=money(f.projection);$('.forecast-label').textContent=f.count+' mesailik ay senaryosu';$('.forecast-secondary b').textContent=money(f.firstProjection);$('#forecast>p').textContent=f.firstProjection==null?'İlk 7 takvim gününde en az 3 kayıt gerekiyor.':`İlk 7 takvim günündeki ${f.first.length} mesainin ortalaması × ${f.count} gün.`;$('#forecast details p').textContent=`${money(f.total)} gerçekleşen + kalan ${f.count-f.rows.length} mesai × ${money(f.avg)} ortalama. Eksik kayıtlar hesaba katılmaz. Bu bir senaryo; kesin kazanç tahmini değil.`;};
+  const prevLast=prev.rows.at(-1),limit=+(s.last||selectedMonth+'-01').slice(-2),prevSame=prev.rows.filter(r=>+r.date.slice(-2)<=limit);
+  $('#month-compare').innerHTML=`<span class="eyebrow">AYLIK KARŞILAŞTIRMA</span><h3>${monthName(selectedMonth)} / ${monthName(prevMonth)}</h3><div class="month-bars"><div><span>Seçili ay · ${s.rows.length} mesai</span><div style="--width:${Math.max(2,s.total/Math.max(s.total,prev.total,1)*100)}%"><b>${money(s.total)}</b></div></div><div><span>Önceki ay · ${prev.rows.length} mesai</span><div style="--width:${Math.max(2,prev.total/Math.max(s.total,prev.total,1)*100)}%"><b>${prev.rows.length?money(prev.total):'Kayıt yok'}</b></div></div></div><p class="sub">${prevLast?`Önceki ayın kaydı ${short(prev.rows[0].date)}–${short(prevLast.date)} aralığını kapsıyor. ${prevSame.length?`Ayın ilk ${limit} günündeki kayıtlı paylar: ${money(s.total)} / ${money(sum(prevSame))}.`:'Aynı takvim aralığında eski kayıt olmadığı için yüzde kıyası yapılmadı.'}`:'Önceki ay için kayıt yok.'} Günlük ortalama karşılaştırması, mesai sayısı farkını dengeler.</p>`;
+ }
+ $('#month-select').onchange=e=>{selectedMonth=e.target.value;renderMonth();};$$('[data-metric]').forEach(b=>b.onclick=()=>{metric=b.dataset.metric;$$('[data-metric]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));renderMonth();});renderMonth();
+ const progress=sameWeekProgress(records,latest.date),maxWeek=Math.max(...weekGroups.map(w=>w.total));
+ $('#weekly').innerHTML=`<div class="week-insight"><span>Bu hafta aynı gün aralığındaki mesai ortalaması</span><strong>${delta(progress.change)}</strong><small>${progress.current.length} / ${progress.previous.length} kayıt · geçen haftaya göre</small></div><div class="panel"><div class="week-chart">${weekGroups.map((w,i)=>`<div class="week-column"><strong>${money(w.total)}</strong><div class="week-track"><div style="height:${Math.max(3,w.total/maxWeek*100)}%"></div></div><b>${short(w.id)}</b><span>${w.rows.length} mesai${w.rows.length<7?' · kısmi':''}</span><small>${money(w.avg)} / mesai</small><small>${i?delta(change(w.avg,weekGroups[i-1].avg)):"İlk kayıtlı hafta"}</small></div>`).join('')}</div><p class="sub">Pazartesi–Pazar. ${fullWeeks.length} haftada 7 günlük kayıt var; kısmi haftaların toplamları farklı sayıda mesai içerir. Yüzdeler bir önceki haftanın mesai ortalamasına göredir.</p></div>`;
+ const wd=weekdayStats(records);
+ function renderWeekday(){const w=wd[selectedWeekday],last=w.rows.at(-1),prior=w.rows.slice(0,-1),avg=average(prior),max=Math.max(...w.rows.map(r=>r.wage),1);$('#weekday-result').innerHTML=`<div class="weekday-summary"><div><span>${weekdays[selectedWeekday]} ortalaması</span><strong>${money(w.avg)}</strong><small>${w.rows.length} kayıt üzerinden</small></div><div><span>Son ${weekdays[selectedWeekday].toLocaleLowerCase('tr')}</span><strong>${last?money(last.wage):'—'}</strong><small>${last?short(last.date):'Kayıt yok'}</small></div><div><span>Önceki aynı günlere göre</span><strong>${delta(last?change(last.wage,avg):null)}</strong><small>${prior.length} önceki günün ortalaması${prior.length===1?' · tek örnek':''}</small></div></div><div class="weekday-bars">${w.rows.map(r=>`<div><span>${short(r.date)}</span><i style="--width:${r.wage/max*100}%"></i><b>${money(r.wage)}</b></div>`).join('')}</div>`;}
+ $$('[data-weekday]').forEach(b=>b.onclick=()=>{selectedWeekday=+b.dataset.weekday;$$('[data-weekday]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));renderWeekday();});renderWeekday();
+ function compareDays(){const a=records.find(r=>r.date===$('#day-a').value),b=records.find(r=>r.date===$('#day-b').value);const metrics=[['Payım',a.wage,b.wage,money],['Yol',a.km,b.km,v=>number(v)+' km'],['Pay / km',a.km?a.wage/a.km:null,b.km?b.wage/b.km:null,rate],...(privateData?[['Yakıt',a.fuel,b.fuel,money],['Yakıt / km',a.km?a.fuel/a.km:null,b.km?b.fuel/b.km:null,rate]]:[])];$('#day-comparison').innerHTML=`<div class="comparison-table">${metrics.map(([label,x,y,fn])=>`<div><span>${label}</span><b>${fn(x)}</b><b>${fn(y)}</b></div>`).join('')}</div><p class="comparison-result">${a.date===b.date?'Aynı mesaiyi seçtin. Başka bir gün seçerek kıyaslayabilirsin.':`${short(a.date)} mesaisinde ${money(Math.abs(a.wage-b.wage))} ${a.wage>=b.wage?'daha fazla':'daha az'} kazandın. ${a.km&&b.km?`Km başına payın ${delta(change(a.wage/a.km,b.wage/b.km))}.`:''}`}</p>`;}
+ $('#day-a').onchange=compareDays;$('#day-b').onchange=compareDays;compareDays();
 }
-async function adminPage() {
-  document.title='Sürücü Paneli — Ada Mesaisi';
-  let data;
-  try {data=await api('admin/reports');}
-  catch(e){login(e.status===401?'':e.message);return;}
-  let records=data.reports,mode='month',anchor=records[0]?.date||cyprus(),editDate='';
-  let plot='wage';
-  app.innerHTML=header(`<div class="nav-actions"><a class="button outline" href="./">Vitrin ${ico('external',15)}</a><button class="button outline" id="logout">Çıkış</button></div>`)+`
-  <main class="shell admin">
-    <div class="admin-banner"><div><span class="eyebrow">${ico('lock',14)} SADECE SENİN İÇİN</span><h1>Sürücü paneli<span>.</span></h1><p>Kendi kazancın, vardiya performansın ve yol defterin.</p></div><span class="banner-icon">${ico('road',84)}</span></div>
-    <div id="admin-lifetime" class="lifetime" aria-label="Tüm vardiyaların özeti"></div>
-    <div class="admin-grid">
-      <section class="panel admin-stats"><div class="panel-head"><div><span class="eyebrow">01 / HESAP KİTAP</span><h2>Mesai özeti</h2></div></div>
-      <div class="admin-controls"><div class="segmented" aria-label="Kazanç dönemi"><button data-mode="week" aria-pressed="true">Hafta</button><button data-mode="month" aria-pressed="false">Ay</button></div>
-      <div class="stepper"><button class="icon-btn" id="prev" aria-label="Önceki dönem">${ico('left',16)}</button><span id="admin-period"></span><button class="icon-btn" id="next" aria-label="Sonraki dönem">${ico('right',16)}</button></div></div>
-      <div id="admin-data"></div>
-      <div class="trend-head"><h3>Vardiya grafiği</h3><div class="segmented" aria-label="Grafik göstergesi"><button data-plot="wage" aria-pressed="true">Payım</button><button data-plot="km" aria-pressed="false">Yol</button></div></div>
-      <div id="admin-chart"></div></section>
-      <section class="panel entry" id="rapor"><span class="eyebrow">02 / YENİ MESAİ</span><h2>Kasa ekle</h2>
-      <p class="sub">${pagesMode?'Vitrine gönderdiğin vardiyalar burada otomatik görünür. Bu formdaki değişiklikler bu tarayıcıda kalır.':'Mesajını yapıştır, okunan rakamları kontrol et ve kaydet.'}</p>
-      <form id="parse"><label for="message">Kasa mesajı</label><textarea id="message" rows="6" maxlength="6000" placeholder="GG.AA.YY&#10;… km&#10;yakıt … TL&#10;kalan … TL" required></textarea><button class="button yellow" type="submit">${ico('spark',16)} Mesajı oku</button><button type="button" id="manual" class="text-btn">Elle gir</button></form>
-      <div id="review" hidden><hr><h3 id="review-title">Rakamları kontrol et</h3><p id="issues" role="status"></p>
-      <form id="save"><div class="fields">
-        <label>Tarih<input id="date" type="date" required max="${cyprus()}"></label>
-        <label>Kilometre<input id="km" type="number" min="0" max="10000" step=".01" inputmode="decimal" required></label>
-        <label>Yakıt (TL)<input id="fuel" type="number" min="0" max="1000000" step=".01" inputmode="decimal" required></label>
-        <label>Kalan kasa (TL)<input id="cash" type="number" min="0" max="1000000" step=".01" inputmode="decimal" required></label>
-      </div><div id="calc" class="calc"></div><button type="submit" class="button dark" id="save-btn">Onayla ve kaydet</button><button type="button" class="text-btn" id="cancel-review">Vazgeç</button></form></div>
-      <p id="entry-error" class="error" role="alert"></p>
-      ${data.pages?`<button id="publish" type="button" class="text-btn">Vitrini eşitle</button><p id="publish-status" class="sub" role="status"></p>`:''}</section>
-    </div>
-    <section class="panel history"><div class="panel-head"><div><span class="eyebrow">03 / ARŞİV</span><h3>Vardiya kayıtları</h3></div>${ico('road',23)}</div><div id="private-table"></div></section>
-    ${data.examples.length?'<details class="panel examples"><summary>Örnek vardiyalarla hesapları incele</summary><p class="sub">Bu kayıtlar sadece örnek; kayıt defterine ve kazanç ortalamana dahil değil.</p>'+table(data.examples)+'</details>':''}
-  </main>`+footer();
-  function draw() {
-    const p=period(mode,anchor), rs=inside(records,p), n=rs.length;
-    const wages=wagesFor(rs);
-    const avg=(value,formatter)=>n?formatter(value/n):'—';
-    const peak=bestBy(rs,'cash');
-    const fuelRows=rs.filter(r=>r.fuel!==null);
-    const fuel=total(fuelRows,'fuel');
-    const fuelDistance=total(fuelRows,'km');
-    const prevAnchor=date(p.start);
-    prevAnchor.setUTCDate(prevAnchor.getUTCDate()-1);
-    const previous=inside(records,period(mode,iso(prevAnchor)));
-    const previousAverage=previous.length?wagesFor(previous)/previous.length:0;
-    const averageChange=n&&previousAverage?100*(wages/n/previousAverage-1):null;
-    const change=averageChange===null?'':`${averageChange>=0?'+':''}${num(averageChange)}% · önceki dönemin günlük ortalamasına göre`;
-    get('#admin-period').textContent=periodName(mode,p);
-    get('#prev').disabled=!records.length || records.at(-1).date>=p.start;
-    get('#next').disabled=!records.length || records[0].date<=p.end;
-    document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
-    const overallBest=bestBy(records,'cash');
-    get('#admin-lifetime').innerHTML=`
-      <div><small>TÜM VARDİYALAR</small><strong>${records.length}</strong><span>${records.length?short(records.at(-1).date)+' – '+short(records[0].date):'Kayıt bekleniyor'}</span></div>
-      <div><small>TOPLAM PAYIM</small><strong>${money(wagesFor(records))}</strong><span>Vardiya kasasının %40’ı</span></div>
-      <div><small>TOPLAM YOL</small><strong>${km(total(records,'km'))}</strong><span>${records.length?km(total(records,'km')/records.length)+' / vardiya':'—'}</span></div>
-      <div><small>EN İYİ VARDİYAM</small><strong>${overallBest?money(share(overallBest.cash)):'—'}</strong><span>${overallBest?long(overallBest.date):'—'}</span></div>`;
-    get('#admin-data').innerHTML=`<div class="metrics admin-metrics">
-      ${metric('Benim kazancım',money(wages),n+' vardiya · %40 pay','wallet',true)}
-      ${metric('Günlük ortalama',avg(wages,money),change||'Kayıtlı vardiya başına','chart')}
-      ${metric('Toplam kasa',money(total(rs,'cash')),peak?'En iyi gün '+short(peak.date)+' · '+money(peak.cash):'—','spark')}
-      ${metric('Toplam yol',km(total(rs,'km')),'Ort. '+avg(total(rs,'km'),km)+' / vardiya','road')}
-    </div>
-    <div class="fuel-strip">${ico('fuel')} <div><b>Yakıt ${fuelRows.length?money(fuel):'—'}</b><small>${fuelRows.length
-      ?`${fuelRows.length}/${n} vardiya · ${fuelDistance?money(fuel/fuelDistance)+' / km':'km bilgisi yok'}`
-      :'Yakıt rakamları için özel arşivi içe aktar.'}</small></div></div>`;
-    drawChart(rs);
-    get('#private-table').innerHTML=table(records,true);
-    document.querySelectorAll('.edit').forEach(b=>b.onclick=()=>{const r=records.find(r=>r.date===b.dataset.date);openReview({...r,fuel:r.fuel===null?'':r.fuel/100,cash:r.cash/100},[],r.date);get('#rapor').scrollIntoView({behavior:'smooth'});});
-  }
-  function drawChart(rows=inside(records,period(mode,anchor))) {
-    document.querySelectorAll('[data-plot]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.plot===plot)));
-    get('#admin-chart').innerHTML=plot==='km'
-      ?chart(rows,'km',km)
-      :chart(rows.map(r=>({...r,wage:share(r.cash)})),'wage',money);
-  }
-  function openReview(fields={},issues=[],editing='') {
-    editDate=editing;
-    get('#review').hidden=false;
-    get('#review-title').textContent=editDate?'Vardiyayı düzenle':'Rakamları kontrol et';
-    get('#save-btn').textContent=editDate?'Değişiklikleri kaydet':'Onayla ve kaydet';
-    get('#issues').textContent=issues.join(' ');
-    get('#entry-error').textContent='';
-    for(const k of ['date','km','fuel','cash']) get('#'+k).value=fields[k]??'';
-    get('#date').readOnly=Boolean(editDate);
-    updateCalc();
-    get('#review-title').setAttribute('tabindex','-1');get('#review-title').focus();
-  }
-  function updateCalc(){
-    const v=get('#cash').value;
-    get('#calc').innerHTML=v&&Number(v)>=0?`<span>Benim payım <b>${money(share(Math.round(Number(v)*100)))}</b></span><span>Vitrindeki kasa <b>${money(share(Math.round(Number(v)*100))+mealAllowance)}</b></span>`:'';
-  }
-  get('#cash').oninput=updateCalc;
-  get('#manual').onclick=()=>openReview({date:cyprus()});
-  get('#cancel-review').onclick=()=>{get('#review').hidden=true;get('#entry-error').textContent='';get('#message').focus();};
-  get('#parse').onsubmit=async e=>{
-    e.preventDefault();e.submitter.disabled=true;get('#entry-error').textContent='';
-    try {const {fields,issues}=await api('admin/parse',{message:get('#message').value});openReview(fields,issues);}
-    catch(err){if(err.status===401)return login(err.message);get('#entry-error').textContent=err.message;}
-    finally{e.submitter.disabled=false;}
-  };
-  get('#save').onsubmit=async e=>{
-    e.preventDefault();const btn=e.submitter;btn.disabled=true;get('#entry-error').textContent='';
-    const fields=Object.fromEntries(['date','km','fuel','cash'].map(k=>[k,get('#'+k).value]));
-    const save=(replace)=>api('admin/reports',{...fields,replace});
-    try {
-      let result;
-      try {result=await save(Boolean(editDate));}
-      catch(err){
-        if(err.status!==409) throw err;
-        if(!confirm(long(fields.date)+' tarihli kaydın üzerine yazılsın mı?')) return;
-        result=await save(true);
-      }
-      records=[...records.filter(r=>r.date!==result.report.date),result.report].sort((a,b)=>b.date.localeCompare(a.date));
-      anchor=result.report.date;
-      get('#review').hidden=true;get('#message').value='';draw();
-      toast('Vardiya kaydedildi.');
-      if(result.pages) showPublish(result.pages);
-    }catch(err){if(err.status===401)return login(err.message);get('#entry-error').textContent=err.message;}finally{btn.disabled=false;}
-  };
-  function showPublish(result) {
-    get('#publish-status').textContent=result==='sent'
-      ?'GitHub güncellemeyi aldı. Vitrine yansıması birkaç dakika sürebilir.'
-      :'Kayıt Mac’te duruyor. GitHub’a göndermek için Vitrini eşitle’ye bas.';
-  }
-  if(data.pages) get('#publish').onclick=async e=>{
-    const button=e.currentTarget;
-    button.disabled=true;
-    get('#publish-status').textContent='GitHub’a gönderiliyor…';
-    try {showPublish((await api('admin/publish',{})).pages);}
-    catch(err){if(err.status===401)return login(err.message);showPublish('failed');}
-    finally {button.disabled=false;}
-  };
-  document.querySelectorAll('[data-plot]').forEach(b=>b.onclick=()=>{plot=b.dataset.plot;drawChart();});
-  get('#logout').onclick=async()=>{try{await api('admin/logout',{});login();}catch(err){if(err.status===401) login();else toast(err.message);}};
-  document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;draw();});
-  const step=dir=>{
-    const d=date(period(mode,anchor).start);
-    if(mode==='week')d.setUTCDate(d.getUTCDate()+dir*7);else d.setUTCMonth(d.getUTCMonth()+dir);
-    anchor=iso(d);draw();
-  };
-  get('#prev').onclick=()=>step(-1);get('#next').onclick=()=>step(1);draw();
-}
-if(offlineReports) driverDashboard();
-else if(!pagesMode && location.pathname==='/sofor') adminPage();
-else publicPage();
+function dateOptions(rows,selected){return rows.slice().reverse().map(r=>`<option value="${r.date}" ${r.date===selected?'selected':''}>${short(r.date)} · ${format(r.date,{weekday:'long'})}</option>`).join('');}
+if(offline)dashboard();else if(!pages&&location.pathname==='/sofor')login();else publicPage();
