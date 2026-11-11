@@ -13,7 +13,30 @@ const arrow='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 const taxi=`<svg class="taxi" viewBox="0 0 140 75" aria-hidden="true"><path fill="#f2c879" stroke="#184457" stroke-width="3" d="m27 38 14-23h47l22 23 16 4 5 18H9V45Z"/><path fill="#b3d5cf" stroke="#184457" stroke-width="3" d="m40 34 9-13h16v13Zm31-13h14l13 13H71Z"/><rect x="56" y="7" width="25" height="9" rx="2" fill="#f7f0dc" stroke="#184457" stroke-width="2"/><path d="M13 46h8m95 0h10M29 43h76" stroke="#184457" stroke-width="4" stroke-dasharray="7 5"/><g fill="#184457"><circle cx="34" cy="59" r="13"/><circle cx="106" cy="59" r="13"/></g><g fill="#f7f0dc"><circle cx="34" cy="59" r="5"/><circle cx="106" cy="59" r="5"/></g></svg>`;
 const brand=()=>`<button class="brand" aria-label="Taksi Defteri" title="Taksi Defteri"><img class="brand-logo" src="./icons/logo-128.png" alt="" width="46" height="46"><span>Taksi Defteri<span class="brand-caption">KUTAY’IN KIBRIS GÜNLÜĞÜ</span></span></button>`;
 const header=action=>`<header class="shell nav">${brand()}${action}</header>`;
-const footer=()=>`<footer class="shell"><div class="checker"></div><span>Taksi Defteri</span><button class="install-button" type="button" data-install-app>Telefona ekle ↗</button></footer>`;
+function footer(showVisits = false) {
+ const counter = showVisits ? '<span class="visit-count" hidden><span>Bugün / toplam</span></span>' : '';
+ return `<footer class="shell"><div class="checker"></div><div class="footer-meta"><span>Taksi Defteri</span>${counter}</div><button class="install-button" type="button" data-install-app>Telefona ekle ↗</button></footer>`;
+}
+let visitBadge;
+function mountVisitCount() {
+ const slot = document.querySelector('.visit-count');
+ if (!slot) return;
+ if (!visitBadge) {
+  visitBadge = new Image();
+  visitBadge.alt = 'Sayfa açılışları, bugün ve toplam';
+  visitBadge.height = 20;
+  visitBadge.referrerPolicy = 'no-referrer';
+  visitBadge.addEventListener('load', () => visitBadge.parentElement?.removeAttribute('hidden'), {once:true});
+  const endpoint = new URL('https://hitscounter.dev/api/hit');
+  endpoint.search = new URLSearchParams({
+   url: 'https://kutayatak.github.io/ada-mesaisi/', label: 'Açılış',
+   icon: 'eye', color: '#276d83', timezone: 'Asia/Famagusta'
+  });
+  visitBadge.src = endpoint.href;
+ }
+ slot.prepend(visitBadge);
+ slot.hidden = !visitBadge.naturalWidth;
+}
 let records=[],vault,timer,screen=0;
 function toast(s){$('#toast').textContent=s;$('#toast').classList.add('visible');clearTimeout(timer);timer=setTimeout(()=>$('#toast').classList.remove('visible'),3000);}
 function delta(n,label=''){return n==null?`<span class="muted">Kıyas için kayıt yok</span>`:`<span class="delta ${n<0?'down':''}">${n>=0?'↗':'↘'} %${decimal.format(Math.abs(n))}</span> ${label}`;}
@@ -41,7 +64,9 @@ async function publicPage(){
  records=[];
  const currentScreen=++screen;
  document.title='Taksi Defteri · Kutay’ın taksi günlüğü';
- app.innerHTML=header('<button class="button outline" id="share">Paylaş '+arrow+'</button>')+'<main class="shell"><div class="empty">Yükleniyor…</div></main>'+footer();secret();
+ app.innerHTML=header('<button class="button outline" id="share">Paylaş '+arrow+'</button>')+'<main class="shell"><div class="empty">Yükleniyor…</div></main>'+footer(pages && location.hostname==='kutayatak.github.io');
+ secret();
+ mountVisitCount();
  $('#share').onclick=async()=>{const url=new URL('./',location.href).href;try{if(navigator.share)await navigator.share({title:'Taksi Defteri',text:'Kıbrıs’tan bir taksi günlüğü.',url});else{await navigator.clipboard.writeText(url);toast('Bağlantı kopyalandı.');}}catch(e){if(e.name!=='AbortError')toast('Bağlantıyı adres çubuğundan kopyalayabilirsin.');}};
  try{records=normalize(await load());}catch(e){if(screen!==currentScreen)return;$('main').innerHTML='<div class="empty">Vardiyalar yüklenemedi. <button class="button" id="retry">Tekrar dene</button></div>';$('#retry').onclick=publicPage;return;}
  if(screen!==currentScreen)return;
