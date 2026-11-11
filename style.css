@@ -154,3 +154,8 @@ select,.select-label select{border-color:#cfE2e7;font-weight:400;background:#fff
 .footer-meta{display:grid;gap:8px;align-content:center}
 .visit-count:not([hidden]){display:inline-flex;gap:8px;align-items:center;color:var(--muted)}
 .visit-count img{height:20px;width:auto}
+
+.hero{grid-template-columns:minmax(0,1fr);grid-template-areas:none;gap:18px;padding-block:20px 15px}
+.hero>.postcard{grid-area:auto;height:clamp(285px,46vw,570px);min-height:0;margin:0;transform:none}
+.hero>.ticket{grid-area:auto;position:relative;inset:auto;width:100%;max-width:none;margin:0;transform:none}
+.hero>.text-link{justify-self:start;margin:0}
