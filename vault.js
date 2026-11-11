@@ -1,4 +1,4 @@
-import {openReports,wrapAccess,unwrapAccess} from './panel-crypto.mjs';
+import {openReports,wrapAccess,unwrapAccess} from './panel-crypto.mjs?v=16';
 let session=null,generation=0;
 const accessStorage='ada-panel-device-v1';
 let pendingAccess=new URLSearchParams(location.hash.slice(1)).get('access');

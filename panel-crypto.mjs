@@ -30,7 +30,33 @@ export async function openReports(envelope,password){
  let clear;
  try{clear=await crypto.subtle.decrypt({name:'AES-GCM',iv,additionalData:encoder.encode('ada-panel-v1')},key,decode(envelope.payload));}
  catch{throw new Error('Şifre doğru değil veya panel dosyası okunamıyor.');}
- return cleanReports(JSON.parse(new TextDecoder().decode(clear)).reports);
+ const reports = cleanReports(JSON.parse(new TextDecoder().decode(clear)).reports);
+ const byDate = new Map(reports.map(row => [row.date, row]));
+ const updates = Object.entries(envelope.days ?? {});
+ const days = await Promise.all(updates.map(async ([date, day]) => {
+  const dayIv = decode(day.iv);
+  if (dayIv.length !== 12) throw new Error('Günlük kayıt geçerli değil.');
+  const bytes = await crypto.subtle.decrypt({
+   name: 'AES-GCM', iv: dayIv, additionalData: encoder.encode('ada-panel-day-v1:' + date)
+  }, key, decode(day.payload));
+  const row = JSON.parse(new TextDecoder().decode(bytes));
+  if (row.date !== date) throw new Error('Günlük kayıt tarihi eşleşmiyor.');
+  return row;
+ }));
+ for (const day of days) byDate.set(day.date, day);
+ return cleanReports([...byDate.values()]);
+}
+export async function appendPanelDays(envelope, rows, password) {
+ const key = await keyFor(password, decode(envelope.salt), ['encrypt']);
+ const days = {...envelope.days};
+ for (const row of cleanReports(rows)) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({
+   name: 'AES-GCM', iv, additionalData: encoder.encode('ada-panel-day-v1:' + row.date)
+  }, key, encoder.encode(JSON.stringify(row)));
+  days[row.date] = {iv: encode(iv), payload: encode(new Uint8Array(ciphertext))};
+ }
+ return {...envelope, days};
 }
 export async function wrapAccess(secret,pin){
  if(!/^[A-Za-z0-9_-]{43}$/.test(secret))throw new Error('Özel bağlantı geçerli değil.');
