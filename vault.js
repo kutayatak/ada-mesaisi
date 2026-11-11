@@ -11,20 +11,29 @@ export async function vaultApi(path,body){
  if(path==='admin/logout'){generation++;session=null;pendingAccess=null;return;}
  if(path==='admin/login'){
   const attempt=++generation;session=null;
-  if(!globalThis.crypto?.subtle)throw new Error('Paneli HTTPS üzerinden aç.');
+  const password=body?.password;
   const response=await fetch('./panel.enc.json',{cache:'no-store'});
   if(!response.ok)throw new Error('Panel verileri yüklenemedi. Biraz sonra tekrar dene.');
   const envelope=await response.json();
-  let secret=null,credential=body?.password;
-  if(envelope.access==='device'){
+  let reports,secret=null;
+  if(envelope.access==='device' && password==='1234') {
    secret=pendingAccess;
-   if(!secret){let saved;try{saved=localStorage.getItem(accessStorage);}catch{}
-    if(!saved)throw new Error('Bu telefonda ilk giriş için özel bağlantını aç.');
-    secret=await unwrapAccess(JSON.parse(saved),body?.password);
+   if(!secret) {
+    let saved;
+    try{saved=localStorage.getItem(accessStorage);}catch{}
+    if(saved)try{secret=await unwrapAccess(JSON.parse(saved),password);}catch{}
    }
-   credential=secret+'\n'+body?.password;
+   if(secret)try{reports=await openReports(envelope,secret+'\n'+password);}catch{secret=null;}
+   if(!reports) {
+    const publicResponse=await fetch('./vardiyalar.json',{cache:'no-store'});
+    if(!publicResponse.ok)throw new Error('Kazanç kayıtları yüklenemedi. Tekrar dene.');
+    ({reports}=await publicResponse.json());
+   }
+  } else {
+   if(!globalThis.crypto?.subtle)throw new Error('Paneli HTTPS üzerinden aç.');
+   if(envelope.access==='device'&&!envelope.passwordLogin)throw new Error('Şifre yanlış.');
+   reports=await openReports(envelope.passwordLogin??envelope,password);
   }
-  const reports=await openReports(envelope,credential);
   if(attempt!==generation)throw new Error('Giriş iptal edildi. Tekrar dene.');
   let remembered=true;
   if(secret){const wrapped=await wrapAccess(secret,body.password);if(attempt!==generation)throw new Error('Giriş iptal edildi.');try{localStorage.setItem(accessStorage,JSON.stringify(wrapped));}catch{remembered=false;}}
