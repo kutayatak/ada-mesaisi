@@ -1,4 +1,4 @@
-import './pwa.mjs?v=15';
+import './pwa.mjs?v=17';
 import {mountMotion,watchMotion} from './motion.mjs?v=8';
 import {PUBLIC_ALLOWANCE,dayDate,iso,addDays,weekStart,sum,average,change,normalize,months,weeks,monthStats,weekdayStats,sameWeekProgress} from './stats.mjs?v=14';
 const app=document.querySelector('#app'),$=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -11,9 +11,9 @@ const weekdays=['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi',
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const arrow='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 19 19 5M5 5h14v14"/></svg>';
 const taxi=`<svg class="taxi" viewBox="0 0 140 75" aria-hidden="true"><path fill="#f2c879" stroke="#184457" stroke-width="3" d="m27 38 14-23h47l22 23 16 4 5 18H9V45Z"/><path fill="#b3d5cf" stroke="#184457" stroke-width="3" d="m40 34 9-13h16v13Zm31-13h14l13 13H71Z"/><rect x="56" y="7" width="25" height="9" rx="2" fill="#f7f0dc" stroke="#184457" stroke-width="2"/><path d="M13 46h8m95 0h10M29 43h76" stroke="#184457" stroke-width="4" stroke-dasharray="7 5"/><g fill="#184457"><circle cx="34" cy="59" r="13"/><circle cx="106" cy="59" r="13"/></g><g fill="#f7f0dc"><circle cx="34" cy="59" r="5"/><circle cx="106" cy="59" r="5"/></g></svg>`;
-const brand=()=>`<button class="brand" aria-label="Ada Mesaisi" title="Ada Mesaisi"><img class="brand-logo" src="./icons/logo-128.png" alt="" width="46" height="46"><span>ada mesaisi<span class="brand-caption">KUTAY’IN TAKSİ GÜNLÜĞÜ</span></span></button>`;
+const brand=()=>`<button class="brand" aria-label="Taksi Defteri" title="Taksi Defteri"><img class="brand-logo" src="./icons/logo-128.png" alt="" width="46" height="46"><span>Taksi Defteri<span class="brand-caption">KUTAY’IN KIBRIS GÜNLÜĞÜ</span></span></button>`;
 const header=action=>`<header class="shell nav">${brand()}${action}</header>`;
-const footer=()=>`<footer class="shell"><div class="checker"></div><span>Ada Mesaisi</span><button class="install-button" type="button" data-install-app>Telefona ekle ↗</button></footer>`;
+const footer=()=>`<footer class="shell"><div class="checker"></div><span>Taksi Defteri</span><button class="install-button" type="button" data-install-app>Telefona ekle ↗</button></footer>`;
 let records=[],vault,timer,screen=0;
 function toast(s){$('#toast').textContent=s;$('#toast').classList.add('visible');clearTimeout(timer);timer=setTimeout(()=>$('#toast').classList.remove('visible'),3000);}
 function delta(n,label=''){return n==null?`<span class="muted">Kıyas için kayıt yok</span>`:`<span class="delta ${n<0?'down':''}">${n>=0?'↗':'↘'} %${decimal.format(Math.abs(n))}</span> ${label}`;}
@@ -40,9 +40,9 @@ async function publicPage(){
  if(vault)await vault.vaultApi('admin/logout',{});
  records=[];
  const currentScreen=++screen;
- document.title='Ada Mesaisi · Kutay’ın taksi günlüğü';
+ document.title='Taksi Defteri · Kutay’ın taksi günlüğü';
  app.innerHTML=header('<button class="button outline" id="share">Paylaş '+arrow+'</button>')+'<main class="shell"><div class="empty">Yükleniyor…</div></main>'+footer();secret();
- $('#share').onclick=async()=>{const url=new URL('./',location.href).href;try{if(navigator.share)await navigator.share({title:'Ada Mesaisi',text:'Kıbrıs’tan bir taksi günlüğü.',url});else{await navigator.clipboard.writeText(url);toast('Bağlantı kopyalandı.');}}catch(e){if(e.name!=='AbortError')toast('Bağlantıyı adres çubuğundan kopyalayabilirsin.');}};
+ $('#share').onclick=async()=>{const url=new URL('./',location.href).href;try{if(navigator.share)await navigator.share({title:'Taksi Defteri',text:'Kıbrıs’tan bir taksi günlüğü.',url});else{await navigator.clipboard.writeText(url);toast('Bağlantı kopyalandı.');}}catch(e){if(e.name!=='AbortError')toast('Bağlantıyı adres çubuğundan kopyalayabilirsin.');}};
  try{records=normalize(await load());}catch(e){if(screen!==currentScreen)return;$('main').innerHTML='<div class="empty">Vardiyalar yüklenemedi. <button class="button" id="retry">Tekrar dene</button></div>';$('#retry').onclick=publicPage;return;}
  if(screen!==currentScreen)return;
  if(!records.length){$('main').innerHTML='<div class="empty">Henüz kayıt yok.</div>';return;}
@@ -57,7 +57,7 @@ async function publicPage(){
 }
 function login(){
  screen++;
- document.title='Giriş · Ada Mesaisi';
+ document.title='Giriş · Taksi Defteri';
  app.innerHTML=header('<button class="button outline" id="home">Ana sayfa ↗</button>')+`<main class="shell login-layout"><section class="login-card"><span class="eyebrow">GİRİŞ</span><h1>Sürücü paneli</h1><form id="login"><label for="password">Panel şifren</label><div class="password-field"><input id="password" type="password" autocomplete="current-password" required maxlength="512" placeholder="••••"><button type="button" id="reveal" aria-label="Şifreyi göster">Göster</button></div><p id="login-error" class="error" role="alert"></p><button class="button primary" type="submit">Giriş yap ${arrow}</button></form><div class="login-checker checker"></div></section></main>`+footer();
  $('#home').onclick=publicPage;$('#password').focus();$('#reveal').onclick=()=>{const p=$('#password'),show=p.type==='password';p.type=show?'text':'password';$('#reveal').textContent=show?'Gizle':'Göster';$('#reveal').setAttribute('aria-label',show?'Şifreyi gizle':'Şifreyi göster');};
  $('#login').onsubmit=async e=>{e.preventDefault();const loginScreen=screen;const b=e.submitter;b.disabled=true;$('#login-error').textContent='';try{if(pages){vault??=await import('./vault.js?v=16');const data=await vault.vaultApi('admin/login',{password:$('#password').value});records=normalize(data.reports);}else{const res=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#password').value})});if(!res.ok)throw new Error('Şifre doğru değil.');const data=await fetch('/api/admin/reports');if(data.ok)records=normalize((await data.json()).reports);}if(loginScreen!==screen)return;await dashboard();window.scrollTo(0,0);}catch(err){if(loginScreen!==screen||!$('#login-error'))return;$('#login-error').textContent=err.message||'Panel açılamadı.';b.disabled=false;}};mountMotion();
@@ -66,7 +66,7 @@ async function dashboard(){
  screen++;
 
  if(!records.length){app.innerHTML=header('')+'<main class="shell empty">Henüz vardiya kaydı yok.</main>';return;}
- document.title='Sürücü paneli · Ada Mesaisi';
+ document.title='Sürücü paneli · Taksi Defteri';
  const latest=records.at(-1),monthGroups=months(records),weekGroups=weeks(records),privateData=records.every(r=>r.fuel!=null),latestMonth=latest.date.slice(0,7);
  let selectedMonth=latestMonth,metric='wage',planned=26,selectedWeekday=5;
  const peak=records.reduce((a,b)=>a.wage>b.wage?a:b),fullWeeks=weekGroups.filter(w=>w.rows.length===7),weekAvg=fullWeeks.length?average(fullWeeks,'total'):average(weekGroups,'total');

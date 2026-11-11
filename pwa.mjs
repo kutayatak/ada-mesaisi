@@ -13,7 +13,7 @@ function showInstallHelp() {
     dialog.setAttribute('aria-labelledby', 'install-title');
     dialog.innerHTML = `
       <img src="./icons/icon-192.png" alt="" width="72" height="72">
-      <h2 id="install-title">Ada Mesaisi’ni yükle</h2>
+      <h2 id="install-title">Taksi Defteri’ni yükle</h2>
       <p><strong>iPhone</strong><br>Safari’de Paylaş → Ana Ekrana Ekle.</p>
       <p><strong>Android</strong><br>Chrome menüsü → Uygulamayı yükle veya Ana ekrana ekle.</p>
       <form method="dialog"><button class="button primary">Tamam</button></form>`;
