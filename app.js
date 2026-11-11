@@ -1,3 +1,4 @@
+import './pwa.mjs?v=15';
 import {mountMotion,watchMotion} from './motion.mjs?v=8';
 import {PUBLIC_ALLOWANCE,dayDate,iso,addDays,weekStart,sum,average,change,normalize,months,weeks,monthStats,weekdayStats,sameWeekProgress} from './stats.mjs?v=14';
 const app=document.querySelector('#app'),$=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -10,9 +11,9 @@ const weekdays=['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi',
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const arrow='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 19 19 5M5 5h14v14"/></svg>';
 const taxi=`<svg class="taxi" viewBox="0 0 140 75" aria-hidden="true"><path fill="#f2c879" stroke="#184457" stroke-width="3" d="m27 38 14-23h47l22 23 16 4 5 18H9V45Z"/><path fill="#b3d5cf" stroke="#184457" stroke-width="3" d="m40 34 9-13h16v13Zm31-13h14l13 13H71Z"/><rect x="56" y="7" width="25" height="9" rx="2" fill="#f7f0dc" stroke="#184457" stroke-width="2"/><path d="M13 46h8m95 0h10M29 43h76" stroke="#184457" stroke-width="4" stroke-dasharray="7 5"/><g fill="#184457"><circle cx="34" cy="59" r="13"/><circle cx="106" cy="59" r="13"/></g><g fill="#f7f0dc"><circle cx="34" cy="59" r="5"/><circle cx="106" cy="59" r="5"/></g></svg>`;
-const brand=()=>`<button class="brand" aria-label="Ada Mesaisi" title="Ada Mesaisi"><span class="brand-mark">a<span>m</span><i></i></span><span>ada mesaisi<span class="brand-caption">KUTAY’IN TAKSİ GÜNLÜĞÜ</span></span></button>`;
+const brand=()=>`<button class="brand" aria-label="Ada Mesaisi" title="Ada Mesaisi"><img class="brand-logo" src="./icons/logo-128.png" alt="" width="46" height="46"><span>ada mesaisi<span class="brand-caption">KUTAY’IN TAKSİ GÜNLÜĞÜ</span></span></button>`;
 const header=action=>`<header class="shell nav">${brand()}${action}</header>`;
-const footer=()=>`<footer class="shell"><div class="checker"></div><span>Ada Mesaisi</span><span>KIBRIS ↗</span></footer>`;
+const footer=()=>`<footer class="shell"><div class="checker"></div><span>Ada Mesaisi</span><button class="install-button" type="button" data-install-app>Telefona ekle ↗</button></footer>`;
 let records=[],vault,timer,screen=0;
 function toast(s){$('#toast').textContent=s;$('#toast').classList.add('visible');clearTimeout(timer);timer=setTimeout(()=>$('#toast').classList.remove('visible'),3000);}
 function delta(n,label=''){return n==null?`<span class="muted">Kıyas için kayıt yok</span>`:`<span class="delta ${n<0?'down':''}">${n>=0?'↗':'↘'} %${decimal.format(Math.abs(n))}</span> ${label}`;}

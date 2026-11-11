@@ -135,3 +135,18 @@ select,.select-label select{border-color:#cfE2e7;font-weight:400;background:#fff
 .ticket{grid-area:ticket;position:relative;left:auto;bottom:auto;width:min(100%,340px);align-self:start;margin:0;transform:none}
 }
 @media(min-width:701px) and (max-width:1000px){.postcard{min-height:465px}}
+
+/* Application identity and installation */
+.brand-logo{display:block;width:46px;height:46px;flex:none;border-radius:14px;box-shadow:0 3px 10px #163e5318}
+.install-button{border:1px solid #c5dce3;border-radius:30px;background:#ffffff9c;color:#276d83;padding:10px 16px;min-height:44px;font-size:12px;font-weight:500;cursor:pointer}
+.install-button:hover{background:#e5f2f3}.pwa-installed [data-install-app]{display:none}
+#install-help{width:min(420px,calc(100% - 36px));max-height:calc(100dvh - 48px);border:1px solid #d1e6eb;border-radius:24px;padding:30px;background:#fafcfb;color:var(--ink);box-shadow:0 20px 80px #123f5530;overflow:auto}
+#install-help::backdrop{background:#0d344b70;backdrop-filter:blur(5px)}
+#install-help>img{border-radius:19px;margin-bottom:22px}
+#install-help h2{font-size:29px;margin-bottom:22px}
+#install-help p{margin:18px 0;color:#5a7e8b;font-size:14px;line-height:1.65}
+#install-help strong{font-weight:550;color:#225e76}
+#install-help form{margin-top:26px}#install-help .button{width:100%}
+#offline-status{position:fixed;bottom:14px;left:50%;translate:-50% 0;z-index:25;background:#163e53;color:#fff;padding:9px 17px;border-radius:25px;font-size:11px;max-width:calc(100% - 28px);text-align:center;box-shadow:0 3px 15px #123f5526}
+@media(max-width:700px){.brand-logo{width:42px;height:42px;border-radius:13px}.install-button{font-size:11px}}
+@media(max-width:370px){.brand-logo{width:38px;height:38px;border-radius:12px}}
