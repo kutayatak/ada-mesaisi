@@ -14,14 +14,28 @@ export const publicRows=rows=>rows.map(r=>({...r,wage:r.earnings})).sort(byDate)
 export function group(rows,key){return Object.entries(Object.groupBy(rows,key)).map(([id,rs])=>({id,rows:rs,total:sum(rs),avg:average(rs),km:sum(rs,'km')})).sort((a,b)=>a.id.localeCompare(b.id));}
 export const months=rs=>group(rs,r=>r.date.slice(0,7));
 export const weeks=rs=>group(rs,r=>weekStart(r.date));
-export function monthStats(rows,month,planned=26){
+export function publicPeriods(rows,today){
+  const week=weekStart(today), month=today.slice(0,7), recentStart=addDays(today,-6);
+  const throughToday=rows.filter(r=>r.date<=today);
+  return {
+    week,month,
+    weekly:throughToday.filter(r=>r.date>=week),
+    monthly:throughToday.filter(r=>r.date.startsWith(month)),
+    recent:throughToday.filter(r=>r.date>=recentStart)
+  };
+}
+
+export function monthStats(rows,month,planned=26,today){
   const selected=rows.filter(r=>r.date.startsWith(month));
   const last=selected.at(-1)?.date;
   const d=dayDate(month+'-01');d.setUTCMonth(d.getUTCMonth()+1);d.setUTCDate(0);
   const days=d.getUTCDate(), first=selected.filter(r=>+r.date.slice(-2)<=7);
-  const count=Math.max(selected.length,Math.min(days,Math.round(planned)));
+  const current=today?.startsWith(month+'-');
+  const remaining=current ? days-Number(today.slice(-2))+(last===today?0:1) : days;
+  const maxShifts=Math.min(days, selected.length+remaining);
+  const count=Math.max(selected.length,Math.min(maxShifts,Math.round(planned)));
   const avg=average(selected);
-  return {rows:selected,total:sum(selected),avg,km:sum(selected,'km'),fuel:selected.every(r=>r.fuel!=null)?sum(selected,'fuel'):null,days,last,first,count,projection:avg===null?null:sum(selected)+avg*(count-selected.length),firstProjection:first.length>=3?average(first)*count:null};
+  return {rows:selected,total:sum(selected),avg,km:sum(selected,'km'),fuel:selected.every(r=>r.fuel!=null)?sum(selected,'fuel'):null,days,last,first,maxShifts,count,projection:avg===null?null:sum(selected)+avg*(count-selected.length),firstProjection:first.length>=3?average(first)*count:null};
 }
 export function weekdayStats(rows){return Array.from({length:7},(_,i)=>{const rs=rows.filter(r=>(dayDate(r.date).getUTCDay()+6)%7===i);return {day:i,rows:rs,avg:average(rs),total:sum(rs)};});}
-export function sameWeekProgress(rows,anchor){const start=weekStart(anchor),elapsed=(dayDate(anchor).getUTCDay()+6)%7;const current=rows.filter(r=>r.date>=start&&r.date<=anchor);const prevStart=addDays(start,-7);const previous=rows.filter(r=>r.date>=prevStart&&r.date<=addDays(prevStart,elapsed));return {current,previous,change:change(average(current),average(previous))};}
+export function sameWeekProgress(rows,anchor){const start=weekStart(anchor),elapsed=(dayDate(anchor).getUTCDay()+6)%7;const current=rows.filter(r=>r.date>=start&&r.date<=anchor);const prevStart=addDays(start,-7);const previous=rows.filter(r=>r.date>=prevStart&&r.date<=addDays(prevStart,elapsed));return {current,previous,change:current.length?change(average(current),average(previous)):null};}
