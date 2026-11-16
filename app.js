@@ -1,7 +1,7 @@
 import './pwa.mjs?v=17';
 import {mountMotion,watchMotion} from './motion.mjs?v=8';
-import {cyprusToday} from './report.mjs?v=1';
-import {publicRows,publicPeriods,dayDate,addDays,weekStart,rowsInRange,monthComparison,sum,average,change,normalize,months,weeks,monthStats,weekdayStats,sameWeekProgress} from './stats.mjs?v=17';
+import {cyprusToday,validDate} from './report.mjs?v=1';
+import {publicRows,publicPeriods,dayDate,addDays,weekStart,rowsInRange,monthComparison,sum,average,change,normalize,months,weeks,monthStats,weekdayStats,latestWeekProgress} from './stats.mjs?v=18';
 const app=document.querySelector('#app'),$=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const pages=!!document.querySelector('meta[name=ada-mode]');
 const decimal=new Intl.NumberFormat('tr-TR',{maximumFractionDigits:2});
@@ -45,19 +45,49 @@ function sectionTitle(kicker,title,extra=''){return `<div class="section-title">
 async function load(){const res=await fetch(pages?'./vardiyalar.json':'/api/public',{cache:'no-cache'});if(!res.ok)throw new Error('Vardiyalar yüklenemedi.');return (await res.json()).reports;}
 function celebrate(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;const el=document.createElement('div');el.className='confetti';el.setAttribute('aria-hidden','true');el.innerHTML=Array.from({length:35},(_,i)=>`<i style="--x:${(i*29)%100}%;--r:${i*33}deg;--delay:${i%8*.05}s;--c:${['#f2c879','#dc674c','#518477'][i%3]}"></i>`).join('');document.body.append(el);setTimeout(()=>el.remove(),2200);}
 function secret(){let taps=[];$('.brand').onclick=()=>{const now=Date.now();taps=taps.filter(t=>now-t<4500);taps.push(now);if(taps.length===5){taps=[];login();}};}
-function lineChart(rows,key='wage',compare=null){
- if(!rows.length)return '<p class="empty">Bu aralıkta kayıt yok.</p>';
- const w=800,h=230,pad=30,vals=rows.map(r=>r[key]),max=Math.max(...vals,...(compare||[]),1)*1.15;
- const point=(v,i)=>[pad+(rows.length===1?.5:i/(rows.length-1))*(w-2*pad),h-pad-v/max*(h-pad*2)];
- const pts=vals.map(point),path=pts.map(([x,y],i)=>`${i?'L':'M'}${x},${y}`).join(' '),baseline=h-pad;
- return `<div class="line-wrap"><svg class="line-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${key==='km'?'Kilometre':key==='fuel'?'Yakıt':'Kazanç'} grafiği; tarih düğmelerinden değerleri inceleyebilirsin."><defs><linearGradient id="wash" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#2895a8" stop-opacity=".3"/><stop offset="1" stop-color="#2895a8" stop-opacity=".01"/></linearGradient></defs>${[.25,.5,.75,1].map(v=>`<path d="M30 ${baseline-v*(h-pad*2)}H770" stroke="currentColor" stroke-opacity=".12" stroke-dasharray="3 6"/>`).join('')}<path d="${path} L${pts.at(-1)[0]},${baseline} L${pts[0][0]},${baseline}Z" fill="url(#wash)"/>${compare?`<path d="${compare.map((v,i)=>{const [x,y]=point(v,i);return `${i?'L':'M'}${x},${y}`;}).join(' ')}" fill="none" stroke="#a6c4cc" stroke-width="3" stroke-dasharray="5 7"/>`:''}<path class="chart-stroke" pathLength="1" d="${path}" fill="none" stroke="#258ca1" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>${pts.map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="${i===pts.length-1?6:3}" fill="#f2c879" stroke="#257b91" stroke-width="1"><title>${short(rows[i].date)}: ${key==='km'?number(vals[i])+' km':money(vals[i])}</title></circle>`).join('')}</svg></div><div class="axis"><span>${short(rows[0].date)}</span><span>${short(rows.at(-1).date)}</span></div>`;
+const chartMetrics={
+ wage:{label:'Payım',format:money,color:'#258ca1'},
+ km:{label:'Kilometre',format:value=>number(value)+' km',color:'#3b7961'},
+ fuel:{label:'Yakıt',format:money,color:'#bf6541'}
+};
+function lineChart(rows,key){
+ const metric=chartMetrics[key];
+ const left=132,right=770,top=24,bottom=195;
+ const values=rows.map(r=>r[key]);
+ const peak=Math.max(...values,key==='km'?1:100);
+ const unit=10**Math.floor(Math.log10(peak/4));
+ const step=Math.ceil(peak/(4*unit))*unit;
+ const max=step*4;
+ const points=values.map((value,i)=>[
+  left+(rows.length===1?.5:i/(rows.length-1))*(right-left),
+  bottom-(value/max)*(bottom-top)
+ ]);
+ const path=points.map(([x,y],i)=>`${i?'L':'M'}${x},${y}`).join(' ');
+ const grid=[0,1,2,3,4].map(i=>{
+  const y=bottom-i*(bottom-top)/4;
+  return `<path d="M${left} ${y}H${right}" stroke="currentColor" stroke-opacity=".16"/><text x="${left-12}" y="${y}" text-anchor="end" dominant-baseline="middle">${metric.format(i*step)}</text>`;
+ }).join('');
+ return `<div class="line-wrap"><svg class="line-chart" viewBox="0 0 800 220" role="img" aria-label="${metric.label} grafiği"><g class="chart-grid">${grid}</g><path d="${path} L${points.at(-1)[0]},${bottom} L${points[0][0]},${bottom}Z" fill="${metric.color}" opacity=".12"/><path d="${path}" fill="none" stroke="${metric.color}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>${points.map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="4" fill="${metric.color}"><title>${short(rows[i].date)} · ${metric.format(values[i])}</title></circle>`).join('')}</svg></div><div class="axis"><span>${short(rows[0].date)}</span><span>${short(rows.at(-1).date)}</span></div>`;
 }
-function plotControl(rows,target,key='wage'){
- const el=$(target);if(!rows.length){el.innerHTML='<p class="empty">Bu aralıkta kayıt yok.</p>';return;}
- let selected=rows.length-1;
- el.innerHTML=`<div class="chart-readout" aria-live="polite"></div>${lineChart(rows,key)}<div class="date-pills" aria-label="Grafikten bir gün seç">${rows.map((r,i)=>`<button data-point="${i}" aria-pressed="${i===selected}">${format(r.date,{day:'numeric'})}<small>${format(r.date,{month:'short'})}</small></button>`).join('')}</div>`;
- const draw=()=>{const r=rows[selected];el.querySelector('.chart-readout').innerHTML=`<strong>${key==='km'?number(r.km)+' km':money(r[key])}</strong><span>${long(r.date)}<br>${number(r.km)} km${key!=='km'&&r.km?' · '+rate(r[key]/r.km)+' / km':''}</span>`;el.querySelectorAll('[data-point]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.point===selected)));el.querySelectorAll('.line-chart circle').forEach((point,i)=>{point.classList.toggle('chart-selected',i===selected);point.setAttribute('r',i===selected?'7':'3');});};
- el.querySelectorAll('[data-point]').forEach(b=>b.onclick=()=>{selected=+b.dataset.point;draw();});draw();
+function plotControl(rows,target,key='wage',selectedDate,onSelect){
+ const el=$(target), metric=chartMetrics[key];
+ if(!rows.length){el.innerHTML='<p class="empty">Bu aralıkta kayıt yok.</p>';return;}
+ let selected=rows.findIndex(row=>row.date===selectedDate);
+ if (selected<0) selected=rows.length-1;
+ el.innerHTML=`<div class="chart-readout" aria-live="polite"></div>${lineChart(rows,key)}<div class="date-pills" aria-label="Grafikten bir gün seç">${rows.map((r,i)=>`<button type="button" data-point="${i}" aria-pressed="${i===selected}">${format(r.date,{day:'numeric'})}<small>${format(r.date,{month:'short'})}</small></button>`).join('')}</div>`;
+ const draw=()=>{
+  const row=rows[selected];
+  const secondary=key!=='km'&&row.km?`<br>${number(row.km)} km · ${rate(row[key]/row.km)} / km`:'';
+  el.querySelector('.chart-readout').innerHTML=`<strong>${metric.format(row[key])}</strong><span>${metric.label} · ${long(row.date)}${secondary}</span>`;
+  el.querySelectorAll('[data-point]').forEach(button=>button.setAttribute('aria-pressed',String(+button.dataset.point===selected)));
+  el.querySelectorAll('.line-chart circle').forEach((point,i)=>point.setAttribute('r',i===selected?'8':'4'));
+ };
+ el.querySelectorAll('[data-point]').forEach(button=>button.onclick=()=>{
+  selected=+button.dataset.point;
+  onSelect?.(rows[selected].date);
+  draw();
+ });
+ draw();
 }
 async function publicPage(){
  records=[];
@@ -128,14 +158,30 @@ function dashboard(){
  const today=cyprusToday(),currentMonth=today.slice(0,7);
  const latest=records.at(-1),monthGroups=months(records),weekGroups=weeks(records);
  const selectableMonths=[...new Set([currentMonth,...monthGroups.map(m=>m.id).reverse()])];
- let selectedMonth=currentMonth,metric='wage',planned=26,selectedWeekday=5;
- const peak=records.reduce((a,b)=>a.wage>b.wage?a:b),fullWeeks=weekGroups.filter(w=>w.rows.length===7),weekAvg=fullWeeks.length?average(fullWeeks,'total'):average(weekGroups,'total');
+ let selectedMonth=currentMonth,metric='wage',planned=null,selectedDay,selectedWeekday=5;
+ const leaveKey='taksi-defteri-izinler';
+ let leave=[];
+ try {
+  const saved=JSON.parse(localStorage.getItem(leaveKey));
+  if (Array.isArray(saved)) leave=[...new Set(saved.filter(validDate))].sort();
+ } catch {}
+ const workedDays=new Set(records.map(row=>row.date));
+ const peak=records.reduce((a,b)=>a.wage>b.wage?a:b);
  app.innerHTML=header(`<div class="nav-actions"><button class="button outline" id="home">Ana sayfa ↗</button><button class="lock-button" id="logout" aria-label="Paneli kilitle">Çıkış</button></div>`)+`
  <main class="shell cockpit"><header class="dashboard-head"><div><span class="eyebrow">KUTAY · SÜRÜCÜ PANELİ</span><h1>Kazanç <em>özeti</em></h1><p>Son gün: ${long(latest.date)} · ${records.length} kayıt</p></div><span class="dashboard-stamp">%40<br><small>SENİN PAYIN</small></span></header>
  <nav class="dashboard-nav" aria-label="Panel bölümleri"><a href="#aylik">Ayın özeti</a><a href="#haftalar">Haftalar</a><a href="#gunler">Günleri kıyasla</a><a href="#arsiv">Arşiv</a></nav>
- <div class="lifetime-strip"><div><span>Tüm aylar toplamı</span><strong>${money(sum(records))}</strong></div><div><span>${fullWeeks.length?'Tam hafta ortalaması':'Kayıtlı hafta ortalaması'}</span><strong>${money(weekAvg)}</strong><small>${fullWeeks.length||weekGroups.length} hafta üzerinden</small></div><div><span>Günlük ortalama</span><strong>${money(average(records))}</strong></div><div><span>En iyi gün · ${short(peak.date)}</span><strong>${money(peak.wage)}</strong></div></div>
+ <div class="lifetime-strip"><div><span>Tüm aylar toplamı</span><strong>${money(sum(records))}</strong></div><div id="week-average"></div><div><span>Günlük ortalama</span><strong>${money(average(records))}</strong></div><div><span>En iyi gün · ${short(peak.date)}</span><strong>${money(peak.wage)}</strong></div></div>
  <section id="aylik" class="section">${sectionTitle('AYLIK ÖZET','Aylık kazanç',`<label class="select-label"><span class="sr-only">Ay seç</span><select id="month-select">${selectableMonths.map(month=>`<option value="${month}">${monthName(month)}</option>`).join('')}</select></label>`)}<div id="month-summary"></div>
- <div class="analysis-grid"><section class="panel monthly-chart"><div class="section-title"><div><span class="eyebrow">GÜNLÜK VERİLER</span><h3>Günler</h3></div><div class="segmented" aria-label="Grafik ölçüsü"><button data-metric="wage" aria-pressed="true">Payım</button><button data-metric="km" aria-pressed="false">Km</button><button data-metric="fuel" aria-pressed="false">Yakıt</button></div></div><div id="month-chart"></div></section><section class="forecast-card" id="forecast"></section></div>
+ <div class="analysis-grid"><section class="panel monthly-chart"><div class="section-title"><div><span class="eyebrow">GÜNLÜK VERİLER</span><h3 id="metric-title">Vardiya payı</h3></div><div class="segmented" aria-label="Grafik ölçüsü"><button type="button" data-metric="wage" aria-pressed="true">Payım</button><button type="button" data-metric="km" aria-pressed="false">Km</button><button type="button" data-metric="fuel" aria-pressed="false">Yakıt</button></div></div><div id="month-chart"></div></section><section class="forecast-card" id="forecast"></section></div>
+ <section class="panel leave-panel">
+  <h3>İzin günleri</h3>
+  <form id="leave-form" class="archive-fields">
+   <label>İzin tarihi <input id="leave-date" type="date" required></label>
+   <button class="button outline" type="submit">İzin günü ekle</button>
+  </form>
+  <div id="leave-days"></div>
+  <p id="leave-feedback" class="sub" role="status"></p>
+ </section>
  <section class="panel month-compare" id="month-compare"></section></section>
  <section id="haftalar" class="section">${sectionTitle('HAFTALIK ÖZET','Haftalık kazanç')}<div id="weekly"></div></section>
  <section id="gunler" class="section">${sectionTitle('GÜNLERE GÖRE','Haftanın günleri')}<div class="panel"><p class="sub">Bir günü seç; tüm kayıtlardaki ortalamasını ve son gününü önceki aynı günlerle kıyasla.</p><div class="weekday-tabs" aria-label="Haftanın günü">${weekdays.map((d,i)=>`<button data-weekday="${i}" aria-label="${d}" aria-pressed="${i===5}"><span>${['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'][i]}</span></button>`).join('')}</div><div id="weekday-result"></div></div>
@@ -176,17 +222,82 @@ function dashboard(){
  archiveStart.onchange=archiveEnd.onchange=renderArchive;
  archiveReset.onclick=()=>{archiveStart.value=archiveEnd.value='';renderArchive();archiveStart.focus();};
  renderArchive();
+ function renderLeave(){
+  const input=$('#leave-date'), start=selectedMonth+'-01';
+  const end=dayDate(start);
+  end.setUTCMonth(end.getUTCMonth()+1);
+  end.setUTCDate(0);
+  input.min=start;
+  input.max=end.toISOString().slice(0,10);
+  if (!input.value.startsWith(selectedMonth+'-')) input.value='';
+  const days=leave.filter(date=>date.startsWith(selectedMonth+'-')&&!workedDays.has(date));
+  $('#leave-days').innerHTML=days.length?days.map(date=>`<span class="leave-day">${long(date)} <button class="button outline" type="button" data-remove-leave="${date}" aria-label="${long(date)} iznini kaldır">Kaldır</button></span>`).join(''):'<p class="sub">Bu ay için işaretlenmiş izin yok.</p>';
+  $$('[data-remove-leave]').forEach(button=>button.onclick=()=>saveLeave(
+   leave.filter(date=>date!==button.dataset.removeLeave),'İzin günü kaldırıldı.'
+  ));
+ }
+ function saveLeave(days,message){
+  try { localStorage.setItem(leaveKey,JSON.stringify(days)); }
+  catch { $('#leave-feedback').textContent='Tarayıcı izin günlerini kaydedemedi.';return; }
+  leave=days;
+  $('#leave-feedback').textContent=message;
+  renderLeave();
+  renderForecast();
+  renderWeekly();
+ }
+ $('#leave-form').onsubmit=event=>{
+  event.preventDefault();
+  const date=$('#leave-date').value;
+  if (!validDate(date)||!date.startsWith(selectedMonth+'-')) return;
+  if (workedDays.has(date)) {
+   $('#leave-feedback').textContent='Bu tarihte zaten vardiya kaydı var.';
+   return;
+  }
+  if (leave.includes(date)) {
+   $('#leave-feedback').textContent='Bu tarih zaten izinli.';
+   return;
+  }
+  saveLeave([...leave,date].sort(),'İzin günü eklendi.');
+ };
+ function renderDailyChart(){
+  const titles={wage:'Vardiya payı',km:'Vardiya kilometresi',fuel:'Vardiya yakıtı'};
+  $('#metric-title').textContent=titles[metric];
+  const rows=rowsInRange(records,selectedMonth+'-01',selectedMonth===currentMonth?today:null)
+   .filter(row=>row.date.startsWith(selectedMonth+'-'));
+  plotControl(rows,'#month-chart',metric,selectedDay,date=>{selectedDay=date;});
+ }
+ function renderForecast(){
+  const active=selectedMonth===currentMonth;
+  const s=monthStats(records,selectedMonth,planned,today,leave);
+  const recorded=s.rows.length;
+  const title=active?'Ay sonu kazancı':'Ay sonu senaryosu';
+  const summary=recorded?`${recorded} vardiyanın ortalaması: ${money(s.avg)}`:'Tahmin için vardiya kaydı gerekiyor.';
+  const controls=recorded?`<p id="forecast-plan"></p><label class="range-label" for="planned">Ayın toplam vardiyası <b id="planned-label"></b></label><input id="planned" type="range" min="${recorded}" max="${s.maxShifts}" value="${s.count}" ${s.maxShifts===recorded?'disabled':''}><p id="forecast-equation"></p>`:'';
+  $('#forecast').innerHTML=`<h3>${title}</h3><strong id="forecast-value">${money(s.projection)}</strong><p class="forecast-label">${summary}</p>${controls}`;
+  if (!recorded) return;
+  function update(f){
+   $('#forecast-value').textContent=money(f.projection);
+   $('#planned-label').textContent=f.count+' vardiya';
+   $('#forecast-plan').textContent=`${recorded} kayıtlı + ${f.count-recorded} ek vardiya`;
+   $('#forecast-equation').textContent=`${money(f.total)} gerçekleşen + ${f.count-recorded} × ${money(f.avg)}`;
+  }
+  update(s);
+  $('#planned').oninput=e=>{
+   planned=+e.target.value;
+   update(monthStats(records,selectedMonth,planned,today,leave));
+  };
+ }
  function renderMonth(){
-  const s=monthStats(records,selectedMonth,planned,today),active=selectedMonth===currentMonth;
+  const s=monthStats(records,selectedMonth,planned,today,leave),active=selectedMonth===currentMonth;
   const {previous,priorEnd,current,prior}=monthComparison(records,selectedMonth,today);
   const currentPeriod=active?`1–${Number(today.slice(-2))} ${monthName(selectedMonth)}`:monthName(selectedMonth);
   const priorPeriod=active?`1–${Number(priorEnd.slice(-2))} ${monthName(previous)}`:monthName(previous);
   const currentDetail=`${currentPeriod} · ${current.length} vardiya`,previousDetail=`${priorPeriod} · ${prior.length} vardiya`;
   const trend=change(average(current),average(prior));
   $('#month-summary').innerHTML=`<div class="summary-grid">${stat('SEÇİLİ AYDAKİ PAYIM',money(current.length?sum(current):null),currentDetail,'yellow-stat')}${stat('ÖNCEKİ AYDAKİ PAYIM',money(prior.length?sum(prior):null),previousDetail)}${stat('ORTALAMA / VARDİYA',money(s.avg),delta(trend,'önceki döneme göre'))}${stat('KİLOMETRE BAŞINA PAY',rate(s.km?s.total/s.km:null),`${number(s.km)} km toplam yol`)}</div><div class="fuel-line"><span>↳ Yakıt: <b>${money(s.rows.length?s.fuel:null)}</b></span><span>Km başına <b>${rate(s.km?s.fuel/s.km:null)}</b></span><span>Kasa / km <b>${rate(s.km?sum(s.rows,'cash')/s.km:null)}</b></span></div>`;
-  plotControl(s.rows,'#month-chart',metric);
-  $('#forecast').innerHTML=`<span class="eyebrow">${active?'TAHMİN':'GEÇMİŞ AY SENARYOSU'}</span><h3>${active?'Ay sonu kazancı':'Ay sonu senaryosu'}</h3><strong>${money(s.projection)}</strong><span class="forecast-label">${s.avg===null?'Tahmin için vardiya kaydı gerekiyor.':s.count+' gün çalışırsan'}</span><label class="range-label" for="planned">Çalışılacak gün <b id="planned-label">${s.count} gün</b></label><input id="planned" type="range" min="${Math.max(1,s.rows.length)}" max="${s.maxShifts}" value="${s.count}" ${s.maxShifts<=Math.max(1,s.rows.length)?'disabled':''} aria-label="Ay için çalışılacak gün sayısı"><div class="forecast-secondary"><span>İlk 7 günün temposuyla</span><b>${money(s.firstProjection)}</b></div><p>${s.firstProjection==null?'İlk 7 takvim gününde en az 3 kayıt gerekiyor.':`İlk 7 takvim günündeki ${s.first.length} günün ortalaması × ${s.count} gün.`}</p><details><summary>Tahmin nasıl hesaplanıyor?</summary><p>${money(s.total)} gerçekleşen + kalan ${s.count-s.rows.length} gün × ${money(s.avg)} ortalama. Eksik kayıtlar hesaba katılmaz. Bu bir senaryo; kesin kazanç tahmini değil.</p></details>`;
-  $('#planned').oninput=e=>{planned=+e.target.value;const f=monthStats(records,selectedMonth,planned,today);$('#planned-label').textContent=f.count+' gün';$('#forecast>strong').textContent=money(f.projection);$('.forecast-label').textContent=f.count+' gün çalışırsan';$('.forecast-secondary b').textContent=money(f.firstProjection);$('#forecast>p').textContent=f.firstProjection==null?'İlk 7 takvim gününde en az 3 kayıt gerekiyor.':`İlk 7 takvim günündeki ${f.first.length} günün ortalaması × ${f.count} gün.`;$('#forecast details p').textContent=`${money(f.total)} gerçekleşen + kalan ${f.count-f.rows.length} gün × ${money(f.avg)} ortalama. Eksik kayıtlar hesaba katılmaz. Bu bir senaryo; kesin kazanç tahmini değil.`;};
+  renderDailyChart();
+  renderForecast();
+  renderLeave();
   const maxTotal=Math.max(sum(current),sum(prior),1);
   const bars=[[current,currentDetail],[prior,previousDetail]].map(([rows,label])=>
    `<div><span>${label}</span><div style="--width:${sum(rows)/maxTotal*100}%"><b>${rows.length?money(sum(rows)):'Kayıt yok'}</b></div></div>`
@@ -195,10 +306,39 @@ function dashboard(){
   $('#month-compare').innerHTML=`<h3>Aylık karşılaştırma</h3><div class="month-bars">${bars}</div><p class="sub">${coverage(current)} · ${coverage(prior)}</p>`;
   watchMotion($('#month-summary'));
  }
- $('#month-select').onchange=e=>{selectedMonth=e.target.value;renderMonth();};$$('[data-metric]').forEach(b=>b.onclick=()=>{metric=b.dataset.metric;$$('[data-metric]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));renderMonth();});renderMonth();
- const weekPeriod=`${short(weekStart(today))} – ${short(addDays(weekStart(today),6))}`;
- const progress=sameWeekProgress(records,today),maxWeek=Math.max(1,...weekGroups.map(w=>w.total));
- $('#weekly').innerHTML=`<div class="summary-grid week-summary">${stat('BU HAFTA PAYIM',money(progress.current.length?sum(progress.current):null),weekPeriod,'yellow-stat')}${stat('VARDİYA SAYISI',number(progress.current.length))}${stat('ORTALAMA / VARDİYA',money(average(progress.current)))}${stat('GEÇEN HAFTAYA GÖRE',delta(progress.change),`Aynı gün aralığı · ${progress.current.length} / ${progress.previous.length} vardiya`)}</div><div class="panel"><div class="week-chart">${weekGroups.map((w,i)=>`<div class="week-column"><strong>${money(w.total)}</strong><div class="week-track"><div style="height:${Math.max(3,w.total/maxWeek*100)}%"></div></div><b>${short(w.id)}</b><span>${w.rows.length} gün${w.rows.length<7?' · kısmi':''}</span><small>${money(w.avg)} / gün</small><small>${i?delta(change(w.avg,weekGroups.find(p=>p.id===addDays(w.id,-7))?.avg)):"İlk kayıtlı hafta"}</small></div>`).join('')}</div><p class="sub">Pazartesi–Pazar. ${fullWeeks.length} haftada 7 günlük kayıt var; kısmi haftaların toplamları farklı sayıda gün içerir. Yüzdeler bir önceki haftanın günlük ortalamana göredir.</p></div>`;
+ $('#month-select').onchange=e=>{
+  selectedMonth=e.target.value;
+  planned=null;
+  selectedDay=undefined;
+  $('#leave-feedback').textContent='';
+  renderMonth();
+ };
+ const metricButtons=$$('[data-metric]');
+ metricButtons.forEach(button=>button.onclick=()=>{
+  metric=button.dataset.metric;
+  metricButtons.forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
+  renderDailyChart();
+ });
+ renderMonth();
+ function renderWeekly(){
+  const progress=latestWeekProgress(records,today),start=weekStart(progress.anchor);
+  const weekPeriod=`${short(start)} – ${short(addDays(start,6))}`;
+  const leaveByWeek=Object.groupBy(leave.filter(date=>!workedDays.has(date)&&date<=today),weekStart);
+  const complete=weekGroups.filter(w=>w.rows.length+(leaveByWeek[w.id]?.length??0)===7);
+  const sample=complete.length?complete:weekGroups;
+  $('#week-average').innerHTML=`<span>${complete.length?'Tam hafta ortalaması':'Kayıtlı hafta ortalaması'}</span><strong>${money(average(sample,'total'))}</strong><small>${sample.length} hafta üzerinden</small>`;
+  const maxWeek=Math.max(1,...weekGroups.map(w=>w.total));
+  const title=progress.latest?'SON KAYITLI HAFTA':'BU HAFTA PAYIM';
+  const cmpDetail=progress.latest?'Önceki takvim haftasına göre':'Aynı gün aralığı';
+  const bars=weekGroups.map(w=>{
+   const rest=leaveByWeek[w.id]?.length??0;
+   const previous=weekGroups.find(p=>p.id===addDays(w.id,-7));
+   return `<div class="week-column"><strong>${money(w.total)}</strong><div class="week-track"><div style="height:${w.total/maxWeek*100}%"></div></div><b>${short(w.id)}</b><span>${w.rows.length} vardiya${rest?` · ${rest} izin`:''}</span><small>${money(w.avg)} / vardiya</small><small>${delta(change(w.avg,previous?.avg))}</small></div>`;
+  }).join('');
+  $('#weekly').innerHTML=`${progress.latest?'<p class="sub week-empty">Bu hafta henüz vardiya kaydı yok.</p>':''}<div class="summary-grid week-summary">${stat(title,money(progress.current.length?sum(progress.current):null),weekPeriod,'yellow-stat')}${stat('VARDİYA SAYISI',number(progress.current.length))}${stat('ORTALAMA / VARDİYA',money(average(progress.current)))}${stat('ÖNCEKİ HAFTAYA GÖRE',delta(progress.change),`${cmpDetail} · ${progress.current.length} / ${progress.previous.length} vardiya`)}</div><div class="panel"><div class="week-chart">${bars}</div><p class="sub">Pazartesi–Pazar. Yüzdeler vardiya başına ortalama payı karşılaştırır.</p></div>`;
+  watchMotion($('#weekly'));
+ }
+ renderWeekly();
  const wd=weekdayStats(records);
  function renderWeekday(){const w=wd[selectedWeekday],last=w.rows.at(-1),prior=w.rows.slice(0,-1),avg=average(prior),max=Math.max(...w.rows.map(r=>r.wage),1);$('#weekday-result').innerHTML=`<div class="weekday-summary"><div><span>${weekdays[selectedWeekday]} ortalaması</span><strong>${money(w.avg)}</strong><small>${w.rows.length} kayıt üzerinden</small></div><div><span>Son ${weekdays[selectedWeekday].toLocaleLowerCase('tr')}</span><strong>${last?money(last.wage):'—'}</strong><small>${last?short(last.date):'Kayıt yok'}</small></div><div><span>Önceki aynı günlere göre</span><strong>${delta(last?change(last.wage,avg):null)}</strong><small>${prior.length} önceki günün ortalaması${prior.length===1?' · tek örnek':''}</small></div></div><div class="weekday-bars">${w.rows.map(r=>`<div><span>${short(r.date)}</span><i style="--width:${r.wage/max*100}%"></i><b>${money(r.wage)}</b></div>`).join('')}</div>`;}
  $$('[data-weekday]').forEach(b=>b.onclick=()=>{selectedWeekday=+b.dataset.weekday;$$('[data-weekday]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));renderWeekday();});renderWeekday();

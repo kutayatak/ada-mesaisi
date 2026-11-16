@@ -35,17 +35,29 @@ export function publicPeriods(rows,today){
   };
 }
 
-export function monthStats(rows,month,planned=26,today){
-  const selected=rows.filter(r=>r.date.startsWith(month));
-  const last=selected.at(-1)?.date;
-  const d=dayDate(month+'-01');d.setUTCMonth(d.getUTCMonth()+1);d.setUTCDate(0);
-  const days=d.getUTCDate(), first=selected.filter(r=>+r.date.slice(-2)<=7);
+export function monthStats(rows,month,planned=null,today,leave=[]){
   const current=today?.startsWith(month+'-');
-  const remaining=current ? days-Number(today.slice(-2))+(last===today?0:1) : days;
-  const maxShifts=Math.min(days, selected.length+remaining);
-  const count=Math.max(selected.length,Math.min(maxShifts,Math.round(planned)));
+  const selected=rows.filter(r=>r.date.startsWith(month+'-')&&(!current||r.date<=today));
+  const d=dayDate(month+'-01');d.setUTCMonth(d.getUTCMonth()+1);d.setUTCDate(0);
+  const days=d.getUTCDate();
+  const worked=new Set(selected.map(r=>r.date));
+  const monthLeave=[...new Set(leave)].filter(date=>date.startsWith(month+'-')&&!worked.has(date));
+  const firstAvailable=current?Number(today.slice(-2))+Number(worked.has(today)):1;
+  const unavailable=monthLeave.filter(date=>Number(date.slice(-2))>=firstAvailable).length;
+  const available=Math.max(0,days-firstAvailable+1-unavailable);
+  const maxShifts=current?selected.length+available:days-unavailable;
+  const count=Math.max(selected.length,Math.min(maxShifts,Math.round(planned??(current?maxShifts:selected.length))));
   const avg=average(selected);
-  return {rows:selected,total:sum(selected),avg,km:sum(selected,'km'),fuel:selected.every(r=>r.fuel!=null)?sum(selected,'fuel'):null,days,last,first,maxShifts,count,projection:avg===null?null:sum(selected)+avg*(count-selected.length),firstProjection:first.length>=3?average(first)*count:null};
+  const total=sum(selected);
+  return {rows:selected,total,avg,km:sum(selected,'km'),fuel:selected.every(r=>r.fuel!=null)?sum(selected,'fuel'):null,
+   maxShifts,count,projection:avg===null?null:total+avg*(count-selected.length)};
+}
+
+export function latestWeekProgress(rows,today){
+  const current=sameWeekProgress(rows,today);
+  if (current.current.length || !rows.length) return {...current,anchor:today,latest:false};
+  const last=rows.at(-1).date;
+  return {...sameWeekProgress(rows,addDays(weekStart(last),6)),anchor:last,latest:true};
 }
 export function weekdayStats(rows){return Array.from({length:7},(_,i)=>{const rs=rows.filter(r=>(dayDate(r.date).getUTCDay()+6)%7===i);return {day:i,rows:rs,avg:average(rs),total:sum(rs)};});}
 export function sameWeekProgress(rows,anchor){const start=weekStart(anchor),elapsed=(dayDate(anchor).getUTCDay()+6)%7;const current=rows.filter(r=>r.date>=start&&r.date<=anchor);const prevStart=addDays(start,-7);const previous=rows.filter(r=>r.date>=prevStart&&r.date<=addDays(prevStart,elapsed));return {current,previous,change:current.length?change(average(current),average(previous)):null};}
