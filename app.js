@@ -1,7 +1,7 @@
 import './pwa.mjs?v=17';
 import {mountMotion,watchMotion} from './motion.mjs?v=8';
-import {cyprusToday,validDate} from './report.mjs?v=1';
-import {publicRows,publicPeriods,dayDate,addDays,weekStart,rowsInRange,monthComparison,sum,average,change,normalize,months,weeks,monthStats,weekdayStats,latestWeekProgress} from './stats.mjs?v=18';
+import {cyprusToday} from './report.mjs?v=1';
+import {LEAVE_DAYS,publicRows,publicPeriods,dayDate,addDays,weekStart,rowsInRange,monthComparison,sum,average,change,normalize,months,weeks,monthStats,weekdayStats,latestWeekProgress} from './stats.mjs?v=19';
 const app=document.querySelector('#app'),$=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const pages=!!document.querySelector('meta[name=ada-mode]');
 const decimal=new Intl.NumberFormat('tr-TR',{maximumFractionDigits:2});
@@ -159,12 +159,6 @@ function dashboard(){
  const latest=records.at(-1),monthGroups=months(records),weekGroups=weeks(records);
  const selectableMonths=[...new Set([currentMonth,...monthGroups.map(m=>m.id).reverse()])];
  let selectedMonth=currentMonth,metric='wage',planned=null,selectedDay,selectedWeekday=5;
- const leaveKey='taksi-defteri-izinler';
- let leave=[];
- try {
-  const saved=JSON.parse(localStorage.getItem(leaveKey));
-  if (Array.isArray(saved)) leave=[...new Set(saved.filter(validDate))].sort();
- } catch {}
  const workedDays=new Set(records.map(row=>row.date));
  const peak=records.reduce((a,b)=>a.wage>b.wage?a:b);
  app.innerHTML=header(`<div class="nav-actions"><button class="button outline" id="home">Ana sayfa ↗</button><button class="lock-button" id="logout" aria-label="Paneli kilitle">Çıkış</button></div>`)+`
@@ -173,15 +167,6 @@ function dashboard(){
  <div class="lifetime-strip"><div><span>Tüm aylar toplamı</span><strong>${money(sum(records))}</strong></div><div id="week-average"></div><div><span>Günlük ortalama</span><strong>${money(average(records))}</strong></div><div><span>En iyi gün · ${short(peak.date)}</span><strong>${money(peak.wage)}</strong></div></div>
  <section id="aylik" class="section">${sectionTitle('AYLIK ÖZET','Aylık kazanç',`<label class="select-label"><span class="sr-only">Ay seç</span><select id="month-select">${selectableMonths.map(month=>`<option value="${month}">${monthName(month)}</option>`).join('')}</select></label>`)}<div id="month-summary"></div>
  <div class="analysis-grid"><section class="panel monthly-chart"><div class="section-title"><div><span class="eyebrow">GÜNLÜK VERİLER</span><h3 id="metric-title">Vardiya payı</h3></div><div class="segmented" aria-label="Grafik ölçüsü"><button type="button" data-metric="wage" aria-pressed="true">Payım</button><button type="button" data-metric="km" aria-pressed="false">Km</button><button type="button" data-metric="fuel" aria-pressed="false">Yakıt</button></div></div><div id="month-chart"></div></section><section class="forecast-card" id="forecast"></section></div>
- <section class="panel leave-panel">
-  <h3>İzin günleri</h3>
-  <form id="leave-form" class="archive-fields">
-   <label>İzin tarihi <input id="leave-date" type="date" required></label>
-   <button class="button outline" type="submit">İzin günü ekle</button>
-  </form>
-  <div id="leave-days"></div>
-  <p id="leave-feedback" class="sub" role="status"></p>
- </section>
  <section class="panel month-compare" id="month-compare"></section></section>
  <section id="haftalar" class="section">${sectionTitle('HAFTALIK ÖZET','Haftalık kazanç')}<div id="weekly"></div></section>
  <section id="gunler" class="section">${sectionTitle('GÜNLERE GÖRE','Haftanın günleri')}<div class="panel"><p class="sub">Bir günü seç; tüm kayıtlardaki ortalamasını ve son gününü önceki aynı günlerle kıyasla.</p><div class="weekday-tabs" aria-label="Haftanın günü">${weekdays.map((d,i)=>`<button data-weekday="${i}" aria-label="${d}" aria-pressed="${i===5}"><span>${['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'][i]}</span></button>`).join('')}</div><div id="weekday-result"></div></div>
@@ -222,43 +207,6 @@ function dashboard(){
  archiveStart.onchange=archiveEnd.onchange=renderArchive;
  archiveReset.onclick=()=>{archiveStart.value=archiveEnd.value='';renderArchive();archiveStart.focus();};
  renderArchive();
- function renderLeave(){
-  const input=$('#leave-date'), start=selectedMonth+'-01';
-  const end=dayDate(start);
-  end.setUTCMonth(end.getUTCMonth()+1);
-  end.setUTCDate(0);
-  input.min=start;
-  input.max=end.toISOString().slice(0,10);
-  if (!input.value.startsWith(selectedMonth+'-')) input.value='';
-  const days=leave.filter(date=>date.startsWith(selectedMonth+'-')&&!workedDays.has(date));
-  $('#leave-days').innerHTML=days.length?days.map(date=>`<span class="leave-day">${long(date)} <button class="button outline" type="button" data-remove-leave="${date}" aria-label="${long(date)} iznini kaldır">Kaldır</button></span>`).join(''):'<p class="sub">Bu ay için işaretlenmiş izin yok.</p>';
-  $$('[data-remove-leave]').forEach(button=>button.onclick=()=>saveLeave(
-   leave.filter(date=>date!==button.dataset.removeLeave),'İzin günü kaldırıldı.'
-  ));
- }
- function saveLeave(days,message){
-  try { localStorage.setItem(leaveKey,JSON.stringify(days)); }
-  catch { $('#leave-feedback').textContent='Tarayıcı izin günlerini kaydedemedi.';return; }
-  leave=days;
-  $('#leave-feedback').textContent=message;
-  renderLeave();
-  renderForecast();
-  renderWeekly();
- }
- $('#leave-form').onsubmit=event=>{
-  event.preventDefault();
-  const date=$('#leave-date').value;
-  if (!validDate(date)||!date.startsWith(selectedMonth+'-')) return;
-  if (workedDays.has(date)) {
-   $('#leave-feedback').textContent='Bu tarihte zaten vardiya kaydı var.';
-   return;
-  }
-  if (leave.includes(date)) {
-   $('#leave-feedback').textContent='Bu tarih zaten izinli.';
-   return;
-  }
-  saveLeave([...leave,date].sort(),'İzin günü eklendi.');
- };
  function renderDailyChart(){
   const titles={wage:'Vardiya payı',km:'Vardiya kilometresi',fuel:'Vardiya yakıtı'};
   $('#metric-title').textContent=titles[metric];
@@ -268,7 +216,7 @@ function dashboard(){
  }
  function renderForecast(){
   const active=selectedMonth===currentMonth;
-  const s=monthStats(records,selectedMonth,planned,today,leave);
+  const s=monthStats(records,selectedMonth,planned,today);
   const recorded=s.rows.length;
   const title=active?'Ay sonu kazancı':'Ay sonu senaryosu';
   const summary=recorded?`${recorded} vardiyanın ortalaması: ${money(s.avg)}`:'Tahmin için vardiya kaydı gerekiyor.';
@@ -284,11 +232,11 @@ function dashboard(){
   update(s);
   $('#planned').oninput=e=>{
    planned=+e.target.value;
-   update(monthStats(records,selectedMonth,planned,today,leave));
+   update(monthStats(records,selectedMonth,planned,today));
   };
  }
  function renderMonth(){
-  const s=monthStats(records,selectedMonth,planned,today,leave),active=selectedMonth===currentMonth;
+  const s=monthStats(records,selectedMonth,planned,today),active=selectedMonth===currentMonth;
   const {previous,priorEnd,current,prior}=monthComparison(records,selectedMonth,today);
   const currentPeriod=active?`1–${Number(today.slice(-2))} ${monthName(selectedMonth)}`:monthName(selectedMonth);
   const priorPeriod=active?`1–${Number(priorEnd.slice(-2))} ${monthName(previous)}`:monthName(previous);
@@ -297,7 +245,6 @@ function dashboard(){
   $('#month-summary').innerHTML=`<div class="summary-grid">${stat('SEÇİLİ AYDAKİ PAYIM',money(current.length?sum(current):null),currentDetail,'yellow-stat')}${stat('ÖNCEKİ AYDAKİ PAYIM',money(prior.length?sum(prior):null),previousDetail)}${stat('ORTALAMA / VARDİYA',money(s.avg),delta(trend,'önceki döneme göre'))}${stat('KİLOMETRE BAŞINA PAY',rate(s.km?s.total/s.km:null),`${number(s.km)} km toplam yol`)}</div><div class="fuel-line"><span>↳ Yakıt: <b>${money(s.rows.length?s.fuel:null)}</b></span><span>Km başına <b>${rate(s.km?s.fuel/s.km:null)}</b></span><span>Kasa / km <b>${rate(s.km?sum(s.rows,'cash')/s.km:null)}</b></span></div>`;
   renderDailyChart();
   renderForecast();
-  renderLeave();
   const maxTotal=Math.max(sum(current),sum(prior),1);
   const bars=[[current,currentDetail],[prior,previousDetail]].map(([rows,label])=>
    `<div><span>${label}</span><div style="--width:${sum(rows)/maxTotal*100}%"><b>${rows.length?money(sum(rows)):'Kayıt yok'}</b></div></div>`
@@ -310,7 +257,6 @@ function dashboard(){
   selectedMonth=e.target.value;
   planned=null;
   selectedDay=undefined;
-  $('#leave-feedback').textContent='';
   renderMonth();
  };
  const metricButtons=$$('[data-metric]');
@@ -323,7 +269,7 @@ function dashboard(){
  function renderWeekly(){
   const progress=latestWeekProgress(records,today),start=weekStart(progress.anchor);
   const weekPeriod=`${short(start)} – ${short(addDays(start,6))}`;
-  const leaveByWeek=Object.groupBy(leave.filter(date=>!workedDays.has(date)&&date<=today),weekStart);
+  const leaveByWeek=Object.groupBy(LEAVE_DAYS.filter(date=>!workedDays.has(date)&&date<=today),weekStart);
   const complete=weekGroups.filter(w=>w.rows.length+(leaveByWeek[w.id]?.length??0)===7);
   const sample=complete.length?complete:weekGroups;
   $('#week-average').innerHTML=`<span>${complete.length?'Tam hafta ortalaması':'Kayıtlı hafta ortalaması'}</span><strong>${money(average(sample,'total'))}</strong><small>${sample.length} hafta üzerinden</small>`;

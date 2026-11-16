@@ -1,5 +1,8 @@
 // Amounts are integer kuruş; averages can contain fractional kuruş until display.
 export const PUBLIC_ALLOWANCE = 60_000;
+export const LEAVE_DAYS = Object.freeze([
+  '2026-11-01'
+]);
 export const dayDate=s=>new Date(s+'T12:00:00Z');
 export const iso=d=>d.toISOString().slice(0,10);
 export function addDays(s,n){const d=dayDate(s);d.setUTCDate(d.getUTCDate()+n);return iso(d);}
@@ -35,7 +38,7 @@ export function publicPeriods(rows,today){
   };
 }
 
-export function monthStats(rows,month,planned=null,today,leave=[]){
+export function monthStats(rows,month,planned=null,today,leave=LEAVE_DAYS){
   const current=today?.startsWith(month+'-');
   const selected=rows.filter(r=>r.date.startsWith(month+'-')&&(!current||r.date<=today));
   const d=dayDate(month+'-01');d.setUTCMonth(d.getUTCMonth()+1);d.setUTCDate(0);
