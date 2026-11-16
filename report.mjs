@@ -27,8 +27,8 @@ export function parseReport(raw) {
       add('date',`${m[3].length===2?'20'+m[3]:m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`);
     } else if ((m=line.match(new RegExp('^'+number+'\\s*km$'))) ||
                (m=line.match(new RegExp('^(?:km|kilometre)\\s*[:=-]?\\s*'+number+'\\s*(?:km)?$')))) add('km',value(m[1]));
-    else if ((m=line.match(new RegExp('^yakıt(?:\\s+(?:masrafı|gideri))?\\s*[:=]?\\s*₺?\\s*'+number+'$')))) add('fuel',value(m[1]));
-    else if ((m=line.match(new RegExp('^(?:kalan(?:\\s+kasa)?|(?:net\\s+)?kasa)\\s*[:=]?\\s*₺?\\s*'+number+'$')))) add('cash',value(m[1]));
+    else if ((m=line.match(new RegExp('^yakıt(?:\\s+(?:tutarı|masrafı|gideri))?\\s*[:=]?\\s*₺?\\s*'+number+'$')))) add('fuel',value(m[1]));
+    else if ((m=line.match(new RegExp('^(?:kalan(?:\\s+kasa)?|(?:net\\s+)?kasa(?:\\s+tutarı)?)\\s*[:=]?\\s*₺?\\s*'+number+'$')))) add('cash',value(m[1]));
   }
   const result={}, issues=[];
   const labels={date:'Tarih',km:'Kilometre',fuel:'Yakıt',cash:'Kalan kasa'};

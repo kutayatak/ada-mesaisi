@@ -58,18 +58,3 @@ export async function appendPanelDays(envelope, rows, password) {
  }
  return {...envelope, days};
 }
-export async function wrapAccess(secret,pin){
- if(!/^[A-Za-z0-9_-]{43}$/.test(secret))throw new Error('Özel bağlantı geçerli değil.');
- const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));
- const key=await keyFor(pin,salt,['encrypt']);
- const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:encoder.encode('ada-device-v1')},key,encoder.encode(secret));
- return {format:'ada-device-v1',salt:encode(salt),iv:encode(iv),payload:encode(new Uint8Array(ciphertext))};
-}
-export async function unwrapAccess(envelope,pin){
- try{
-  if(envelope?.format!=='ada-device-v1')throw new Error();
-  const key=await keyFor(pin,decode(envelope.salt),['decrypt']);
-  const clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(envelope.iv),additionalData:encoder.encode('ada-device-v1')},key,decode(envelope.payload));
-  const secret=new TextDecoder().decode(clear);if(!/^[A-Za-z0-9_-]{43}$/.test(secret))throw new Error();return secret;
- }catch{throw new Error('Şifre doğru değil veya bu telefondaki giriş kaydı okunamıyor.');}
-}

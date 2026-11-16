@@ -7,7 +7,10 @@ export function weekStart(s){return addDays(s,-(dayDate(s).getUTCDay()+6)%7);}
 export const sum=(rs,k='wage')=>rs.reduce((a,r)=>a+(r[k]??0),0);
 export const average=(rs,k='wage')=>rs.length?sum(rs,k)/rs.length:null;
 export const change=(a,b)=>b>0?(a/b-1)*100:null;
-export const normalize=rows=>rows.map(r=>({...r,wage:r.cash!=null?Math.round(r.cash*.4):r.earnings-PUBLIC_ALLOWANCE})).sort((a,b)=>a.date.localeCompare(b.date));
+export const driverPay=cash=>Math.round(cash*0.4);
+const byDate=(a,b)=>a.date.localeCompare(b.date);
+export const normalize=rows=>rows.map(r=>({...r,wage:driverPay(r.cash)})).sort(byDate);
+export const publicRows=rows=>rows.map(r=>({...r,wage:r.earnings})).sort(byDate);
 export function group(rows,key){return Object.entries(Object.groupBy(rows,key)).map(([id,rs])=>({id,rows:rs,total:sum(rs),avg:average(rs),km:sum(rs,'km')})).sort((a,b)=>a.id.localeCompare(b.id));}
 export const months=rs=>group(rs,r=>r.date.slice(0,7));
 export const weeks=rs=>group(rs,r=>weekStart(r.date));
