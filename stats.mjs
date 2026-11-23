@@ -1,7 +1,8 @@
 // Amounts are integer kuruş; averages can contain fractional kuruş until display.
 export const PUBLIC_ALLOWANCE = 60_000;
 export const LEAVE_DAYS = Object.freeze([
-  '2026-11-01'
+  '2026-11-01',
+  '2026-11-23'
 ]);
 export const dayDate=s=>new Date(s+'T12:00:00Z');
 export const iso=d=>d.toISOString().slice(0,10);

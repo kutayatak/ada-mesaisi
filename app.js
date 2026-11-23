@@ -1,7 +1,7 @@
 import './pwa.mjs?v=17';
 import {mountMotion,watchMotion} from './motion.mjs?v=8';
 import {cyprusToday} from './report.mjs?v=1';
-import {LEAVE_DAYS,publicRows,publicPeriods,dayDate,addDays,weekStart,rowsInRange,monthComparison,sum,average,change,normalize,months,weeks,monthStats,weekdayStats,latestWeekProgress} from './stats.mjs?v=19';
+import {LEAVE_DAYS,publicRows,publicPeriods,dayDate,addDays,weekStart,rowsInRange,monthComparison,sum,average,change,normalize,months,weeks,monthStats,weekdayStats,latestWeekProgress} from './stats.mjs?v=20';
 const app=document.querySelector('#app'),$=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const pages=!!document.querySelector('meta[name=ada-mode]');
 const decimal=new Intl.NumberFormat('tr-TR',{maximumFractionDigits:2});

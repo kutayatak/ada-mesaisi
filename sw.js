@@ -1,11 +1,11 @@
 // Bump this version when shipping new application assets.
-const CACHE_NAME = 'ada-mesaisi-v26';
+const CACHE_NAME = 'ada-mesaisi-v27';
 const BASE = new URL('./', self.location.href);
 const INDEX_URL = new URL('index.html', BASE).href;
 const PUBLIC_DATA_URL = new URL('vardiyalar.json', BASE).href;
 const CORE_ASSETS = [
-  './', 'index.html', 'app.js?v=26', 'style.css?v=24', 'pwa.mjs?v=17',
-  'motion.mjs?v=8', 'stats.mjs?v=19', 'report.mjs?v=1', 'vault.js?v=17', 'panel-crypto.mjs?v=17',
+  './', 'index.html', 'app.js?v=27', 'style.css?v=24', 'pwa.mjs?v=17',
+  'motion.mjs?v=8', 'stats.mjs?v=20', 'report.mjs?v=1', 'vault.js?v=17', 'panel-crypto.mjs?v=17',
   'manifest.webmanifest', 'mercedes-kibris.jpg', 'icons/icon-192.png',
   'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/logo-128.png',
   'icons/favicon-64.png'
